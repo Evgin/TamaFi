@@ -1,7 +1,9 @@
-# Оценка возможности миграции TamaFi на ESP32-S3-Touch-AMOLED-1.8
+# Оценка возможности миграции TamaFi на MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8
 
 **Дата оценки:** 23 января 2026  
 **Оценщик:** AI Assistant  
+**Целевое устройство:** MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8  
+**Примечание:** Это одно и то же устройство, продается под разными брендами (MiiBestOD, Spotpear) с разными корпусами.  
 **Статус:** ✅ **МИГРАЦИЯ ВОЗМОЖНА** с умеренной сложностью
 
 ---
@@ -50,7 +52,7 @@
 - TFT ST7789 240×240
 - TFT_eSprite для фреймбуферов
 
-**Целевое:**
+**Целевое (MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8):**
 - GFX_Library_for_Arduino
 - AMOLED SH8601 368×448
 - Arduino_GFX с поддержкой спрайтов
@@ -71,7 +73,7 @@
 - 6 физических кнопок (UP, OK, DOWN, R1, R2, R3)
 - Прямое чтение GPIO с INPUT_PULLUP
 
-**Целевое:**
+**Целевое (MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8):**
 - 2 физические кнопки (BOOT, PWR)
 - Тач-экран FT3168 (I2C)
 
@@ -93,7 +95,7 @@
 - 4× WS2812-2020 NeoPixels
 - Функции: ledsHappy(), ledsSad(), ledsWifi(), ledsRest()
 
-**Целевое:**
+**Целевое (MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8):**
 - Нет светодиодов
 - Замена на экранные индикаторы
 
@@ -112,7 +114,7 @@
 - PWM buzzer на GPIO2
 - LEDc канал 5
 
-**Целевое:**
+**Целевое (MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8):**
 - ES8311 codec (опционально)
 - PWM доступен
 
@@ -130,7 +132,7 @@
 - PWM на TFT_BRIGHTNESS_PIN (GPIO7)
 - ledcSetup() + ledcAttachPin()
 
-**Целевое:**
+**Целевое (MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8):**
 - gfx->Display_Brightness(i) где i = 0-255
 - QSPI регистр 0x51
 
@@ -283,4 +285,4 @@
 
 ---
 
-*Оценка основана на анализе кода проекта TamaFi и документации ESP32-S3-Touch-AMOLED-1.8*
+*Оценка основана на анализе кода проекта TamaFi и документации MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8*

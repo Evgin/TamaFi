@@ -1,10 +1,15 @@
-# План действий по миграции TamaFi на MiiBestOD 1.8" AMOLED
+# План действий по миграции TamaFi на MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8
 
 ## Общая информация
 
-**Целевое устройство:** ESP32-S3-Touch-AMOLED-1.8 (Waveshare)  
-**Официальная документация:** [Waveshare Wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8)  
+**Целевое устройство:** MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8  
+**Примечание:** Это одно и то же устройство, продается под разными брендами (MiiBestOD, Spotpear) с разными корпусами.  
+**Официальная документация:** [Waveshare Wiki - ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8)  
+**Ссылка на товар Spotpear:** [AliExpress - 1005008897879416](https://aliexpress.ru/item/1005008897879416.html)  
 **Разрешение экрана:** 368×448 пикселей  
+**Размеры:** 45 × 37 × 17 мм (длина × ширина × толщина)  
+**Вес:** 38 грамм  
+**Батарея:** 350 mAh  
 **Стратегия:** Апскейл 240×240 → 368×368 + область управления 368×80  
 **Дата создания плана:** 23 января 2026
 
@@ -17,8 +22,9 @@
 **Цель:** Собрать всю необходимую техническую информацию о целевом устройстве
 
 #### Задачи:
-- [x] Найти официальную документацию ESP32-S3-Touch-AMOLED-1.8
-  - ✅ [Waveshare Wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8)
+- [x] Найти официальную документацию MiiBestOD / Spotpear ESP32-S3-Touch-AMOLED-1.8
+  - ✅ [Waveshare Wiki - ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8)
+  - ✅ [AliExpress - Spotpear 1005008897879416](https://aliexpress.ru/item/1005008897879416.html)
   - ✅ Схемы подключения
   - ✅ Распиновка (pinout)
   - ✅ Технические спецификации
