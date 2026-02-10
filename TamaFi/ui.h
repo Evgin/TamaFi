@@ -1,13 +1,14 @@
 #pragma once
 #include <Arduino.h>
-#include <TFT_eSPI.h>
+#include "display_amoled.h"
 
 // ============ Enums & structs shared between UI and main ============
 
 void sndHatch();
 
-int petPosX = 120;
-int petPosY = 90;
+// Позиция питомца на экране (определение в ui.cpp)
+extern int petPosX;
+extern int petPosY;
 
 enum Screen {
   SCREEN_BOOT,
@@ -73,12 +74,7 @@ struct WifiStats {
   int wpaCount    = 0;
 };
 
-// ============ Extern objects from main (TFT & sprites) ============
-
-extern TFT_eSPI tft;
-extern TFT_eSprite fb;
-extern TFT_eSprite petSprite;
-extern TFT_eSprite effectSprite;
+// ============ Display: use getContentCanvas(), flushContentAndDrawControlBar(), drawSpriteToContent() ============
 
 // ============ Shared game state (defined in TamaFi.ino) ============
 
@@ -101,9 +97,7 @@ extern unsigned long lastWifiScanTime;
 extern unsigned long lastSaveTime;
 
 extern bool      soundEnabled;
-extern bool      neoPixelsEnabled;
 extern uint8_t   tftBrightnessIndex;
-extern uint8_t   ledBrightnessIndex;
 extern bool      autoSleep;
 extern uint16_t  autoSaveMs;
 

@@ -1,12 +1,18 @@
 #include <Arduino.h>
+#include <pgmspace.h>
 #include "ui.h"
 #include "ui_anim.h"
+// Полное определение Arduino_GFX нужно для вызовов getContentCanvas()->...
+#include <Arduino_GFX_Library.h>
 
 // Graphics headers
 #include "StoneGolem.h"
 #include "egg_hatch.h"
 #include "effect.h"
 #include "background.h"
+
+int petPosX = 120;
+int petPosY = 90;
 
 static const int TFT_W = 240;
 static const int TFT_H = 240;
@@ -48,6 +54,17 @@ static const uint16_t* ATTACK_FRAMES[3] = {
     attack_0, attack_1, attack_2
 };
 
+// Sprite buffers (replacement for petSprite/effectSprite)
+#define PET_BUF_SIZE   (115 * 110)
+#define EFFECT_BUF_SIZE (100 * 95)
+static uint16_t petBuffer[PET_BUF_SIZE];
+static uint16_t effectBuffer[EFFECT_BUF_SIZE];
+static void copyProgmemToPet(const uint16_t* src) {
+    for (size_t i = 0; i < PET_BUF_SIZE; i++) petBuffer[i] = pgm_read_word(src + i);
+}
+static void copyProgmemToEffect(const uint16_t* src) {
+    for (size_t i = 0; i < EFFECT_BUF_SIZE; i++) effectBuffer[i] = pgm_read_word(src + i);
+}
 
 // Local UI state
 static int idleFrameUi = 0;
@@ -117,55 +134,49 @@ static const char* activityTextLocal(Activity a) {
 }
 
 static void drawHeader(const char* title) {
-    fb.fillRect(0, 0, TFT_W, 18, TFT_BLACK);
-    fb.drawLine(0, 18, TFT_W, 18, TFT_CYAN);
-    fb.drawLine(0, 19, TFT_W, 19, TFT_MAGENTA);
+    getContentCanvas()->fillRect(0, 0, TFT_W, 18, TFT_BLACK);
+    getContentCanvas()->drawLine(0, 18, TFT_W, 18, TFT_CYAN);
+    getContentCanvas()->drawLine(0, 19, TFT_W, 19, TFT_MAGENTA);
 
-    fb.fillRect(5, 6, 6, 6, TFT_WHITE);
-    fb.fillRect(6, 7, 4, 4, TFT_BLACK);
+    getContentCanvas()->fillRect(5, 6, 6, 6, TFT_WHITE);
+    getContentCanvas()->fillRect(6, 7, 4, 4, TFT_BLACK);
 
-    fb.setTextColor(TFT_WHITE);
-    fb.setCursor(18, 5);
-    fb.print(title);
+    getContentCanvas()->setTextColor(TFT_WHITE);
+    getContentCanvas()->setCursor(18, 5);
+    getContentCanvas()->print(title);
 }
 
 static void drawBar(int x, int y, int w, int h, int value, uint16_t color) {
-    fb.drawRect(x, y, w, h, TFT_WHITE);
+    getContentCanvas()->drawRect(x, y, w, h, TFT_WHITE);
     int fillWidth = (w - 2) * value / 100;
-    fb.fillRect(x + 1, y + 1, fillWidth, h - 2, color);
+    getContentCanvas()->fillRect(x + 1, y + 1, fillWidth, h - 2, color);
 }
 
 static void drawBubble(int x, int y, bool selected) {
     if (selected) {
-        fb.fillCircle(x, y, 4, TFT_WHITE);
-        fb.fillCircle(x, y, 2, TFT_BLACK);
+        getContentCanvas()->fillCircle(x, y, 4, TFT_WHITE);
+        getContentCanvas()->fillCircle(x, y, 2, TFT_BLACK);
     } else {
-        fb.drawCircle(x, y, 4, TFT_WHITE);
+        getContentCanvas()->drawCircle(x, y, 4, TFT_WHITE);
     }
 }
 
 static void drawMenuIcon(int iconIndex, int x, int y) {
     switch (iconIndex) {
-        case 0: fb.drawRect(x, y+3, 5, 4, TFT_WHITE); fb.fillRect(x+1,y+4,3,2,TFT_WHITE); break;
-        case 1: fb.drawLine(x+2,y+8,x+5,y+2,TFT_WHITE); fb.drawLine(x+8,y+8,x+5,y+2,TFT_WHITE); fb.fillRect(x+4,y+8,2,3,TFT_WHITE); break;
-        case 2: fb.drawRect(x+1,y+2,8,6,TFT_WHITE); fb.drawPixel(x,y+3,TFT_WHITE); fb.drawPixel(x+9,y+3,TFT_WHITE); break;
-        case 3: fb.drawLine(x+1,y+3,x+9,y+3,TFT_WHITE); fb.fillRect(x+3,y+2,3,3,TFT_WHITE); break;
-        case 4: fb.drawCircle(x+5,y+5,3,TFT_WHITE); break;
-        case 5: fb.fillRect(x+4,y+2,2,2,TFT_WHITE); break;
-        case 6: fb.drawLine(x+8,y+4,x+2,y+4,TFT_WHITE); fb.drawLine(x+2,y+4,x+4,y+2,TFT_WHITE); break;
+        case 0: getContentCanvas()->drawRect(x, y+3, 5, 4, TFT_WHITE); getContentCanvas()->fillRect(x+1,y+4,3,2,TFT_WHITE); break;
+        case 1: getContentCanvas()->drawLine(x+2,y+8,x+5,y+2,TFT_WHITE); getContentCanvas()->drawLine(x+8,y+8,x+5,y+2,TFT_WHITE); getContentCanvas()->fillRect(x+4,y+8,2,3,TFT_WHITE); break;
+        case 2: getContentCanvas()->drawRect(x+1,y+2,8,6,TFT_WHITE); getContentCanvas()->drawPixel(x,y+3,TFT_WHITE); getContentCanvas()->drawPixel(x+9,y+3,TFT_WHITE); break;
+        case 3: getContentCanvas()->drawLine(x+1,y+3,x+9,y+3,TFT_WHITE); getContentCanvas()->fillRect(x+3,y+2,3,3,TFT_WHITE); break;
+        case 4: getContentCanvas()->drawCircle(x+5,y+5,3,TFT_WHITE); break;
+        case 5: getContentCanvas()->fillRect(x+4,y+2,2,2,TFT_WHITE); break;
+        case 6: getContentCanvas()->drawLine(x+8,y+4,x+2,y+4,TFT_WHITE); getContentCanvas()->drawLine(x+2,y+4,x+4,y+2,TFT_WHITE); break;
     }
 }
 
 static void animateSelector(int &pos, int &target, unsigned long &lastTick) {
-    unsigned long now = millis();
-    if (now - lastTick < MENU_ANIM_INTERVAL) return;
-    lastTick = now;
-    if (pos == target) return;
-
-    int diff = target - pos;
-    int step = (diff > 0) ? MENU_ANIM_STEP : -MENU_ANIM_STEP;
-    if (abs(diff) < MENU_ANIM_STEP) pos = target;
-    else pos += step;
+    // Без плавной анимации: курсор сразу прыгает к целевой позиции
+    (void)lastTick;
+    pos = target;
 }
 
 static const uint16_t** currentIdleSet() {
@@ -182,28 +193,27 @@ static const uint16_t** currentIdleSet() {
 // BOOT SCREEN
 // ---------------------------------------------------------------------------
 static void screenBoot() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("TamaFi v2");
 
-    fb.setTextColor(TFT_WHITE);
-    fb.setCursor(20, 60);
-    fb.print("WiFi-fed Virtual Pet");
+    getContentCanvas()->setTextColor(TFT_WHITE);
+    getContentCanvas()->setCursor(20, 60);
+    getContentCanvas()->print("WiFi-fed Virtual Pet");
 
-    fb.setCursor(20, 100);
-    fb.print("Press any button...");
+    getContentCanvas()->setCursor(20, 100);
+    getContentCanvas()->print("Press any button...");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // HATCH SCREEN (Idle egg → OK → hatch → home)
 // ---------------------------------------------------------------------------
 static void screenHatch() {
-    ledcWriteTone(5, 0);
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Hatching...");
 
-    fb.pushImage(0, 18, TFT_W, TFT_H - 18, backgroundImage2);
+    draw16bitBitmapToContentProgmem(0, 18, TFT_W, TFT_H - 18, backgroundImage2, 240);
     unsigned long now = millis();
 
     // 1) Idle egg animation until OK pressed
@@ -213,14 +223,14 @@ static void screenHatch() {
             eggIdleFrameUi = (eggIdleFrameUi + 1) % 4;
         }
 
-        petSprite.pushImage(0, 0, PET_W, PET_H, EGG_IDLE_FRAMES[eggIdleFrameUi]);
-        petSprite.pushToSprite(&fb, 70, 80, TFT_WHITE);
+        copyProgmemToPet(EGG_IDLE_FRAMES[eggIdleFrameUi]);
+        drawSpriteToContent(70, 80, PET_W, PET_H, petBuffer, TFT_WHITE);
 
-        //fb.setCursor(10, 200);
-        //fb.setTextColor(TFT_WHITE);
-        //fb.print("Press OK to hatch");
+        //getContentCanvas()->setCursor(10, 200);
+        //getContentCanvas()->setTextColor(TFT_WHITE);
+        //getContentCanvas()->print("Press OK to hatch");
 
-        fb.pushSprite(0, 0);
+        flushContentAndDrawControlBar();
         return;
     }
 
@@ -243,14 +253,14 @@ static void screenHatch() {
             }
         }
 
-        petSprite.pushImage(0, 0, PET_W, PET_H, EGG_FRAMES[hatchFrameUi]);
-        petSprite.pushToSprite(&fb, 70, 80, TFT_WHITE);
+        copyProgmemToPet(EGG_FRAMES[hatchFrameUi]);
+        drawSpriteToContent(70, 80, PET_W, PET_H, petBuffer, TFT_WHITE);
 
-        //fb.setCursor(10, 200);
-        //fb.setTextColor(TFT_WHITE);
-        //fb.print("Hatching...");
+        //getContentCanvas()->setCursor(10, 200);
+        //getContentCanvas()->setTextColor(TFT_WHITE);
+        //getContentCanvas()->print("Hatching...");
 
-        fb.pushSprite(0, 0);
+        flushContentAndDrawControlBar();
         return;
     }
 
@@ -270,18 +280,18 @@ static void drawStatsBlock() {
     drawBar(x, y + 28,  w, h, pet.happiness, TFT_YELLOW);
     drawBar(x, y + 56,  w, h, pet.health,    TFT_GREEN);
 
-    fb.setTextColor(TFT_BLACK);
-    fb.setCursor(x + 3, y + 75);
-    fb.print("Mood:  ");
-    fb.print(moodTextLocal(currentMood));
+    getContentCanvas()->setTextColor(TFT_BLACK);
+    getContentCanvas()->setCursor(x + 3, y + 75);
+    getContentCanvas()->print("Mood:  ");
+    getContentCanvas()->print(moodTextLocal(currentMood));
 
-    fb.setCursor(x + 3, y + 89);
-    fb.print("Stage: ");
-    fb.print(stageTextLocal(petStage));
+    getContentCanvas()->setCursor(x + 3, y + 89);
+    getContentCanvas()->print("Stage: ");
+    getContentCanvas()->print(stageTextLocal(petStage));
 }
 
 static void screenHome() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
 
     // ===== TOP BAR MESSAGE =====
     if (currentActivity != ACT_NONE)
@@ -289,7 +299,7 @@ static void screenHome() {
     else
         drawHeader("Idle");
 
-    fb.pushImage(0, 18, TFT_W, TFT_H - 18, backgroundImage);
+    draw16bitBitmapToContentProgmem(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
 
     unsigned long now = millis();
 
@@ -313,13 +323,13 @@ static void screenHome() {
             frameIdx = constrain(restFrameIndex, 0, 4);
         }
 
-        petSprite.pushImage(0, 0, PET_W, PET_H, EGG_FRAMES[frameIdx]);
-        petSprite.pushToSprite(&fb, petPosX, petPosY, TFT_WHITE);
+        copyProgmemToPet(EGG_FRAMES[frameIdx]);
+        drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
 
         // --- Always draw stats ---
         drawStatsBlock();
 
-        fb.pushSprite(0, 0);
+        flushContentAndDrawControlBar();
         return;
     }
 
@@ -333,12 +343,12 @@ static void screenHome() {
             huntFrame = (huntFrame + 1) % 3;   // attack_0 → attack_1 → attack_2
         }
 
-        petSprite.pushImage(0, 0, PET_W, PET_H, ATTACK_FRAMES[huntFrame]);
-        petSprite.pushToSprite(&fb, petPosX, petPosY, TFT_WHITE);
+        copyProgmemToPet(ATTACK_FRAMES[huntFrame]);
+        drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
 
         drawStatsBlock();
 
-        fb.pushSprite(0, 0);
+        flushContentAndDrawControlBar();
         return;
     }
 
@@ -355,8 +365,8 @@ static void screenHome() {
     }
 
     const uint16_t** idleSet = currentIdleSet();
-    petSprite.pushImage(0, 0, PET_W, PET_H, idleSet[idleFrameUi]);
-    petSprite.pushToSprite(&fb, petPosX, petPosY, TFT_WHITE);
+    copyProgmemToPet(idleSet[idleFrameUi]);
+    drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
 
     // =============================
     //         ALWAYS DRAW STATS
@@ -367,11 +377,11 @@ static void screenHome() {
     //     HUNGER EFFECT OVERLAY
     // =============================
     if (hungerEffectActive) {
-        effectSprite.pushImage(0, 0, EFFECT_W, EFFECT_H, HUNGER_FRAMES[hungerEffectFrame]);
-        effectSprite.pushToSprite(&fb, 120, 90, TFT_WHITE);
+        copyProgmemToEffect(HUNGER_FRAMES[hungerEffectFrame]);
+        drawSpriteToContent(120, 90, EFFECT_W, EFFECT_H, effectBuffer, TFT_WHITE);
     }
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 
@@ -379,13 +389,16 @@ static void screenHome() {
 // MAIN MENU
 // ---------------------------------------------------------------------------
 static void screenMenu(int mainMenuIndex) {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Main Menu");
+
+    // Размер шрифта по умолчанию
+    getContentCanvas()->setTextSize(1);
 
     animateSelector(menuHighlightY, menuHighlightTargetY, lastMenuAnimTime);
 
-    fb.fillRect(8, menuHighlightY, 224, 18, TFT_DARKGREY);
-    fb.drawRect(8, menuHighlightY, 224, 18, TFT_CYAN);
+    getContentCanvas()->fillRect(8, menuHighlightY, 224, 18, TFT_DARKGREY);
+    getContentCanvas()->drawRect(8, menuHighlightY, 224, 18, TFT_CYAN);
 
     const char* items[] = {
         "Pet Status",
@@ -405,209 +418,206 @@ static void screenMenu(int mainMenuIndex) {
 
         drawMenuIcon(i, 16, y - 2);
 
-        fb.setCursor(40, y);
-        fb.setTextColor(i == mainMenuIndex ? TFT_YELLOW : TFT_WHITE);
-        fb.print(items[i]);
+        getContentCanvas()->setCursor(40, y);
+        getContentCanvas()->setTextColor(i == mainMenuIndex ? TFT_YELLOW : TFT_WHITE);
+        getContentCanvas()->print(items[i]);
     }
 
-    fb.setCursor(10, 200);
-    fb.setTextColor(TFT_WHITE);
-    fb.print("UP/DOWN = move | OK = select");
+    // Подсказка по управлению скрыта: нижняя панель с иконками уже поясняет зоны тача
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->setTextColor(TFT_WHITE);
+    //getContentCanvas()->print("UP/DOWN = move | OK = select");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // PET STATUS
 // ---------------------------------------------------------------------------
 static void screenPetStatus() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Pet Status");
 
-    fb.setTextColor(TFT_WHITE);
+    getContentCanvas()->setTextColor(TFT_WHITE);
 
-    fb.setCursor(10, 26);
-    fb.print("Stage: ");  fb.print(stageTextLocal(petStage));
+    getContentCanvas()->setCursor(10, 26);
+    getContentCanvas()->print("Stage: ");  getContentCanvas()->print(stageTextLocal(petStage));
 
-    fb.setCursor(10,38);
-    fb.print("Age:   ");
-    fb.print(pet.ageDays); fb.print("d ");
-    fb.print(pet.ageHours); fb.print("h ");
-    fb.print(pet.ageMinutes); fb.print("m");
+    getContentCanvas()->setCursor(10,38);
+    getContentCanvas()->print("Age:   ");
+    getContentCanvas()->print(pet.ageDays); getContentCanvas()->print("d ");
+    getContentCanvas()->print(pet.ageHours); getContentCanvas()->print("h ");
+    getContentCanvas()->print(pet.ageMinutes); getContentCanvas()->print("m");
 
 
-    fb.setCursor(10, 56);
-    fb.print("Hunger: "); fb.print(pet.hunger); fb.print("%");
+    getContentCanvas()->setCursor(10, 56);
+    getContentCanvas()->print("Hunger: "); getContentCanvas()->print(pet.hunger); getContentCanvas()->print("%");
 
-    fb.setCursor(10, 68);
-    fb.print("Happy:  "); fb.print(pet.happiness); fb.print("%");
+    getContentCanvas()->setCursor(10, 68);
+    getContentCanvas()->print("Happy:  "); getContentCanvas()->print(pet.happiness); getContentCanvas()->print("%");
 
-    fb.setCursor(10, 80);
-    fb.print("Health: "); fb.print(pet.health); fb.print("%");
+    getContentCanvas()->setCursor(10, 80);
+    getContentCanvas()->print("Health: "); getContentCanvas()->print(pet.health); getContentCanvas()->print("%");
 
-    fb.setCursor(10, 98);
-    fb.print("Mood:   "); fb.print(moodTextLocal(currentMood));
+    getContentCanvas()->setCursor(10, 98);
+    getContentCanvas()->print("Mood:   "); getContentCanvas()->print(moodTextLocal(currentMood));
 
-    fb.setCursor(10, 116);
-    fb.print("Personality:");
+    getContentCanvas()->setCursor(10, 116);
+    getContentCanvas()->print("Personality:");
 
-    fb.setCursor(16, 130);
-    fb.print("Curiosity: "); fb.print((int)traitCuriosity);
+    getContentCanvas()->setCursor(16, 130);
+    getContentCanvas()->print("Curiosity: "); getContentCanvas()->print((int)traitCuriosity);
 
-    fb.setCursor(16, 142);
-    fb.print("Activity : "); fb.print((int)traitActivity);
+    getContentCanvas()->setCursor(16, 142);
+    getContentCanvas()->print("Activity : "); getContentCanvas()->print((int)traitActivity);
 
-    fb.setCursor(16, 154);
-    fb.print("Stress   : "); fb.print((int)traitStress);
+    getContentCanvas()->setCursor(16, 154);
+    getContentCanvas()->print("Stress   : "); getContentCanvas()->print((int)traitStress);
 
-    fb.setCursor(10, 200);
-    fb.print("OK = Back");
+    // Подсказка "OK = Back" скрыта
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->print("OK = Back");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // ENVIRONMENT
 // ---------------------------------------------------------------------------
 static void screenEnvironment() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Environment");
 
-    fb.setTextColor(TFT_WHITE);
+    getContentCanvas()->setTextColor(TFT_WHITE);
 
-    fb.setCursor(10, 30);
-    fb.print("Networks : "); fb.print(wifiStats.netCount);
+    getContentCanvas()->setCursor(10, 30);
+    getContentCanvas()->print("Networks : "); getContentCanvas()->print(wifiStats.netCount);
 
-    fb.setCursor(10, 42);
-    fb.print("Strong   : "); fb.print(wifiStats.strongCount);
+    getContentCanvas()->setCursor(10, 42);
+    getContentCanvas()->print("Strong   : "); getContentCanvas()->print(wifiStats.strongCount);
 
-    fb.setCursor(10, 54);
-    fb.print("Hidden   : "); fb.print(wifiStats.hiddenCount);
+    getContentCanvas()->setCursor(10, 54);
+    getContentCanvas()->print("Hidden   : "); getContentCanvas()->print(wifiStats.hiddenCount);
 
-    fb.setCursor(10, 66);
-    fb.print("Open     : "); fb.print(wifiStats.openCount);
+    getContentCanvas()->setCursor(10, 66);
+    getContentCanvas()->print("Open     : "); getContentCanvas()->print(wifiStats.openCount);
 
-    fb.setCursor(10, 78);
-    fb.print("WPA/etc  : "); fb.print(wifiStats.wpaCount);
+    getContentCanvas()->setCursor(10, 78);
+    getContentCanvas()->print("WPA/etc  : "); getContentCanvas()->print(wifiStats.wpaCount);
 
-    fb.setCursor(10, 94);
-    fb.print("Avg RSSI : "); fb.print(wifiStats.avgRSSI);
+    getContentCanvas()->setCursor(10, 94);
+    getContentCanvas()->print("Avg RSSI : "); getContentCanvas()->print(wifiStats.avgRSSI);
 
-    fb.setCursor(10, 200);
-    fb.print("OK = Back");
+    // Подсказка "OK = Back" скрыта
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->print("OK = Back");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // SYSTEM INFO
 // ---------------------------------------------------------------------------
 static void screenSysInfo() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("System Info");
 
-    fb.setTextColor(TFT_WHITE);
+    getContentCanvas()->setTextColor(TFT_WHITE);
 
-    fb.setCursor(10, 30);
-    fb.print("Firmware: 2.0");
+    getContentCanvas()->setCursor(10, 30);
+    getContentCanvas()->print("Firmware: 2.0");
 
-    fb.setCursor(10, 42);
-    fb.print("MCU:      ESP32");
+    getContentCanvas()->setCursor(10, 42);
+    getContentCanvas()->print("MCU:      ESP32");
 
-    fb.setCursor(10, 54);
-    fb.print("Heap Free: ");
-    fb.print(ESP.getFreeHeap() / 1024); fb.print(" KB");
+    getContentCanvas()->setCursor(10, 54);
+    getContentCanvas()->print("Heap Free: ");
+    getContentCanvas()->print(ESP.getFreeHeap() / 1024); getContentCanvas()->print(" KB");
 
     unsigned long s = millis() / 1000;
     unsigned long m = s / 60;
     unsigned long h = m / 60;
     s %= 60; m %= 60;
 
-    fb.setCursor(10, 72);
-    fb.print("Uptime: ");
-    fb.printf("%02lu:%02lu:%02lu", h, m, s);
+    getContentCanvas()->setCursor(10, 72);
+    getContentCanvas()->print("Uptime: ");
+    getContentCanvas()->printf("%02lu:%02lu:%02lu", h, m, s);
 
-    fb.setCursor(10, 90);
-    fb.print("WiFi Scan: ");
-    fb.print(wifiScanInProgress ? "Running" : "Idle");
+    getContentCanvas()->setCursor(10, 90);
+    getContentCanvas()->print("WiFi Scan: ");
+    getContentCanvas()->print(wifiScanInProgress ? "Running" : "Idle");
 
-    fb.setCursor(10, 200);
-    fb.print("OK = Back");
+    // Подсказка "OK = Back" скрыта
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->print("OK = Back");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // CONTROLS MENU
 // ---------------------------------------------------------------------------
 static void screenControls(int controlsIndex) {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Controls");
 
     animateSelector(ctlHighlightY, ctlHighlightTargetY, lastCtlAnim);
 
-    fb.fillRect(8, ctlHighlightY, 224, 18, TFT_DARKGREY);
-    fb.drawRect(8, ctlHighlightY, 224, 18, TFT_CYAN);
+    getContentCanvas()->fillRect(8, ctlHighlightY, 224, 18, TFT_DARKGREY);
+    getContentCanvas()->drawRect(8, ctlHighlightY, 224, 18, TFT_CYAN);
 
     const char* labels[] = {
         "Screen Brightness",
-        "LED Brightness",
         "Sound",
-        "NeoPixels",
         "Back"
     };
 
-    fb.setTextColor(TFT_WHITE);
-    fb.setTextSize(1);
+    getContentCanvas()->setTextColor(TFT_WHITE);
+    getContentCanvas()->setTextSize(1);
 
     int baseY = 30;
     int step  = 20;
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
         int y = baseY + i * step;
 
         drawBubble(14, y, i == controlsIndex);
 
-        fb.setCursor(30, y - 4);
-        fb.setTextColor(i == controlsIndex ? TFT_YELLOW : TFT_WHITE);
-        fb.print(labels[i]);
+        getContentCanvas()->setCursor(30, y - 4);
+        getContentCanvas()->setTextColor(i == controlsIndex ? TFT_YELLOW : TFT_WHITE);
+        getContentCanvas()->print(labels[i]);
 
-        fb.setCursor(150, y - 4);
-        fb.setTextColor(TFT_CYAN);
+        getContentCanvas()->setCursor(150, y - 4);
+        getContentCanvas()->setTextColor(TFT_CYAN);
 
         switch (i) {
             case 0:
-                fb.print(tftBrightnessIndex==0?"Low":tftBrightnessIndex==1?"Mid":"High");
+                getContentCanvas()->print(tftBrightnessIndex==0?"Low":tftBrightnessIndex==1?"Mid":"High");
                 break;
             case 1:
-                fb.print(ledBrightnessIndex==0?"Low":ledBrightnessIndex==1?"Mid":"High");
-                break;
-            case 2:
-                fb.print(soundEnabled?"On":"Off");
-                break;
-            case 3:
-                fb.print(neoPixelsEnabled?"On":"Off");
+                getContentCanvas()->print(soundEnabled?"On":"Off");
                 break;
         }
     }
 
-    fb.setCursor(10, 200);
-    fb.print("OK = Select/Back");
+    // Подсказка "OK = Select/Back" скрыта
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->print("OK = Select/Back");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // SETTINGS MENU
 // ---------------------------------------------------------------------------
 static void screenSettings(int settingsMenuIndex) {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Settings");
 
     animateSelector(setHighlightY, setHighlightTargetY, lastSetAnim);
 
-    fb.fillRect(8, setHighlightY, 224, 18, TFT_DARKGREY);
-    fb.drawRect(8, setHighlightY, 224, 18, TFT_CYAN);
+    getContentCanvas()->fillRect(8, setHighlightY, 224, 18, TFT_DARKGREY);
+    getContentCanvas()->drawRect(8, setHighlightY, 224, 18, TFT_CYAN);
 
     const char* labels[] = {
         "Theme",
@@ -618,6 +628,9 @@ static void screenSettings(int settingsMenuIndex) {
         "Back"
     };
 
+    // Размер шрифта по умолчанию
+    getContentCanvas()->setTextSize(1);
+
     int baseY = 30;
     int step  = 18;
 
@@ -626,64 +639,66 @@ static void screenSettings(int settingsMenuIndex) {
 
         drawBubble(14, y, i == settingsMenuIndex);
 
-        fb.setCursor(30, y - 4);
-        fb.setTextColor(i == settingsMenuIndex ? TFT_YELLOW : TFT_WHITE);
-        fb.print(labels[i]);
+        getContentCanvas()->setCursor(30, y - 4);
+        getContentCanvas()->setTextColor(i == settingsMenuIndex ? TFT_YELLOW : TFT_WHITE);
+        getContentCanvas()->print(labels[i]);
 
-        fb.setCursor(150, y - 4);
-        fb.setTextColor(TFT_CYAN);
+        getContentCanvas()->setCursor(150, y - 4);
+        getContentCanvas()->setTextColor(TFT_CYAN);
 
         switch (i) {
-            case 0: fb.print("Pixel"); break;
-            case 1: fb.print(autoSleep?"On":"Off"); break;
-            case 2: fb.print(autoSaveMs/1000); fb.print("s"); break;
+            case 0: getContentCanvas()->print("Pixel"); break;
+            case 1: getContentCanvas()->print(autoSleep?"On":"Off"); break;
+            case 2: getContentCanvas()->print(autoSaveMs/1000); getContentCanvas()->print("s"); break;
         }
     }
 
-    fb.setCursor(10, 200);
-    fb.print("OK = Select");
+    // Подсказка "OK = Select" скрыта
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->print("OK = Select");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // DIAGNOSTICS
 // ---------------------------------------------------------------------------
 static void screenDiagnostics() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Diagnostics");
 
-    fb.setTextColor(TFT_WHITE);
+    getContentCanvas()->setTextColor(TFT_WHITE);
 
-    fb.setCursor(10, 30);
-    fb.print("Activity: ");
-    fb.print(activityTextLocal(currentActivity));
+    getContentCanvas()->setCursor(10, 30);
+    getContentCanvas()->print("Activity: ");
+    getContentCanvas()->print(activityTextLocal(currentActivity));
 
-    fb.setCursor(10, 42);
-    fb.print("Mood: ");
-    fb.print(moodTextLocal(currentMood));
+    getContentCanvas()->setCursor(10, 42);
+    getContentCanvas()->print("Mood: ");
+    getContentCanvas()->print(moodTextLocal(currentMood));
 
-    fb.setCursor(10, 54);
-    fb.print("RestPhase: ");
-    fb.print(restPhase==REST_ENTER?"ENTER":
+    getContentCanvas()->setCursor(10, 54);
+    getContentCanvas()->print("RestPhase: ");
+    getContentCanvas()->print(restPhase==REST_ENTER?"ENTER":
              restPhase==REST_DEEP ?"DEEP":
              restPhase==REST_WAKE ?"WAKE":"NONE");
 
-    fb.setCursor(10, 66);
-    fb.print("WiFi Scan: ");
-    fb.print(wifiScanInProgress?"Running":"Idle");
+    getContentCanvas()->setCursor(10, 66);
+    getContentCanvas()->print("WiFi Scan: ");
+    getContentCanvas()->print(wifiScanInProgress?"Running":"Idle");
 
-    fb.setCursor(10, 200);
-    fb.print("OK = Back");
+    // Подсказка "OK = Back" скрыта
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->print("OK = Back");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------
 // GAME OVER
 // ---------------------------------------------------------------------------
 static void screenGameOver() {
-    fb.fillSprite(TFT_BLACK);
+    getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Game Over");
 
     unsigned long now = millis();
@@ -694,16 +709,16 @@ static void screenGameOver() {
         if (deadFrameUi > 2) deadFrameUi = 2;
     }
 
-    fb.pushImage(0, 18, TFT_W, TFT_H - 18, backgroundImage);
+    draw16bitBitmapToContentProgmem(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
 
-    petSprite.pushImage(0, 0, PET_W, PET_H, DEAD_FRAMES[deadFrameUi]);
-    petSprite.pushToSprite(&fb, petPosX, petPosY, TFT_WHITE);
+    copyProgmemToPet(DEAD_FRAMES[deadFrameUi]);
+    drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
 
-    //fb.setCursor(10, 200);
-    //fb.setTextColor(TFT_WHITE);
-    //fb.print("OK = Restart");
+    //getContentCanvas()->setCursor(10, 200);
+    //getContentCanvas()->setTextColor(TFT_WHITE);
+    //getContentCanvas()->print("OK = Restart");
 
-    fb.pushSprite(0, 0);
+    flushContentAndDrawControlBar();
 }
 
 // ---------------------------------------------------------------------------

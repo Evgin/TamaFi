@@ -1,10 +1,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <TFT_eSPI.h>
-#include <Adafruit_NeoPixel.h>
 #include <Preferences.h>
 #include <math.h>
+#include "HWCDC.h"
+#include "device_config.h"
 
+HWCDC USBSerial;
+// Вывод в оба порта — в мониторе может быть открыт USB CDC или UART
+#define DBG(x) do { Serial.println(x); USBSerial.println(x); } while(0)
+
+#include "display_amoled.h"
+#include "input.h"
 #include "ui.h"
 #include "ui_anim.h"
 
@@ -18,24 +24,7 @@
 bool hasHatchedOnce = false;
 bool hatchTriggered = false;
 
-// --------- Hardware pins ---------
-#define BTN_UP    13
-#define BTN_OK    12
-#define BTN_DOWN  11
-
-#define BTN_RIGHT1 8
-#define BTN_RIGHT2 9
-#define BTN_RIGHT3 10
-
-#define LED_PIN    1
-#define LED_COUNT  4
-
-#define BUZZER_PIN    2
-#define BUZZER_CH     5
-
-#define TFT_BRIGHTNESS_PIN 7
-
-// TFT sizes
+// --------- Hardware: display in device_config.h; buttons/LED/buzzer stubbed until Phase 2–4 ---------
 #define TFT_W 240
 #define TFT_H 240
 #define PET_W 115
@@ -43,13 +32,6 @@ bool hatchTriggered = false;
 #define EFFECT_W 100
 #define EFFECT_H 95
 
-// --------- Global objects ---------
-TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite fb(&tft);
-TFT_eSprite petSprite(&tft);
-TFT_eSprite effectSprite(&tft);
-
-Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 Preferences prefs;
 
 // --------- Shared game state (matching ui.h externs) ---------
@@ -71,9 +53,7 @@ unsigned long lastWifiScanTime = 0;
 unsigned long lastSaveTime     = 0;
 
 bool      soundEnabled     = true;
-bool      neoPixelsEnabled = true;
 uint8_t   tftBrightnessIndex = 1;
-uint8_t   ledBrightnessIndex = 1;
 bool      autoSleep          = true;
 uint16_t  autoSaveMs         = 30000;
 
@@ -105,14 +85,7 @@ unsigned long lastHungerFrameTime = 0;
 // Death
 unsigned long lastDeadFrameTime = 0;
 
-// Buttons (edge)
-bool lastUp   = HIGH;
-bool lastOk   = HIGH;
-bool lastDown = HIGH;
-
-bool lastR1 = HIGH;
-bool lastR2 = HIGH;
-bool lastR3 = HIGH;
+// Buttons: handled by input module (touch + BOOT/PWR)
 
 // Menus
 int mainMenuIndex     = 0;
@@ -120,6 +93,12 @@ int controlsIndex     = 0;
 int settingsMenuIndex = 0;
 
 // Buzzer
+// ESP32 Arduino 3.x: ledcAttach() возвращает bool; ledcWriteTone(pin, freq) принимает ПИН, не канал.
+#if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= 0x030000
+  #define BUZZER_LEDC_TARGET  BUZZER_PIN   // 3.x: tone по пину
+#else
+  #define BUZZER_LEDC_TARGET  BUZZER_CH    // старый API: по каналу
+#endif
 unsigned long buzzerEndTime = 0;
 
 // Wifi decision randomness
@@ -134,87 +113,27 @@ void sndDiscover();
 void sndRestStart();
 void sndRestEnd();
 
-// --------- Basic helpers ---------
-bool buttonPressed(int pin, bool &lastState) {
-  bool s = digitalRead(pin);
-  bool p = (lastState == HIGH && s == LOW);
-  lastState = s;
-  return p;
-}
+// --------- Buttons: input module (no buttonPressed) ---------
 
-// -------------------- NeoPixel Core --------------------
-void ledsOff() {
-  if (!neoPixelsEnabled) return;     // If disabled, leave off state
-  for (int i = 0; i < LED_COUNT; i++)
-    leds.setPixelColor(i, 0);
-  leds.show();                       // ALWAYS show after writing pixels
-}
-
-// Brightness must only change .setBrightness()
-// Never rewrite pixels unless needed
-void applyLedBrightness() {
-  uint8_t bri =
-      (ledBrightnessIndex == 0) ? 20 :
-      (ledBrightnessIndex == 1) ? 90 :
-                                  180;
-
-  leds.setBrightness(bri);
-
-  if (!neoPixelsEnabled) {
-    ledsOff();
-    return;
-  }
-
-  leds.show();     // update brightness instantly
-}
-
-// -------------------- Color Helpers --------------------
-static inline uint32_t C(uint8_t r, uint8_t g, uint8_t b) {
-  return leds.Color(r, g, b);
-}
-
-// -------------------- Visual Effects --------------------
-void ledsHappy() {
-  if (!neoPixelsEnabled) return;
-  uint32_t col = C(120, 40, 200);    // soft violet
-  for (int i = 0; i < LED_COUNT; i++) leds.setPixelColor(i, col);
-  leds.show();
-}
-
-void ledsSad() {
-  if (!neoPixelsEnabled) return;
-  uint32_t col = C(200, 0, 0);       // dim red (non-blinding)
-  for (int i = 0; i < LED_COUNT; i++) leds.setPixelColor(i, col);
-  leds.show();
-}
-
-void ledsWifi() {
-  if (!neoPixelsEnabled) return;
-  uint32_t col = C(0, 90, 255);      // softer blue
-  for (int i = 0; i < LED_COUNT; i++) leds.setPixelColor(i, col);
-  leds.show();
-}
-
-void ledsRest() {
-  if (!neoPixelsEnabled) return;
-  uint32_t col = C(0, 25, 90);       // calm deep-blue
-  for (int i = 0; i < LED_COUNT; i++) leds.setPixelColor(i, col);
-  leds.show();
-}
-
+// ---------- Screen indicator (replaces NeoPixels) ----------
+void ledsOff()   { setIndicatorState(INDICATOR_OFF); }
+void ledsHappy() { setIndicatorState(INDICATOR_HAPPY); }
+void ledsSad()   { setIndicatorState(INDICATOR_SAD); }
+void ledsWifi()  { setIndicatorState(INDICATOR_WIFI); }
+void ledsRest()  { setIndicatorState(INDICATOR_REST); }
 
 // ---------- Buzzer core ----------
 void stopBuzzerIfNeeded() {
   if (buzzerEndTime == 0) return;
   if (millis() > buzzerEndTime) {
-    ledcWriteTone(BUZZER_CH, 0);
+    ledcWriteTone(BUZZER_LEDC_TARGET, 0);
     buzzerEndTime = 0;
   }
 }
 
 void buzzerPlay(int freq, int durMs) {
   if (!soundEnabled) return;
-  ledcWriteTone(BUZZER_CH, freq);
+  ledcWriteTone(BUZZER_LEDC_TARGET, freq);
   buzzerEndTime = millis() + durMs;
 }
 
@@ -260,7 +179,7 @@ RetroSound SND_HATCH = { HATCH_FREQS, HATCH_TIMES, 5 };
 
 void sndUpdate() {
   if (!soundEnabled) {
-    ledcWriteTone(BUZZER_CH, 0);
+    ledcWriteTone(BUZZER_LEDC_TARGET, 0);
     sndIndex = -1;
     sndStep = 0;
     return;
@@ -284,32 +203,33 @@ void sndUpdate() {
     }
 
     if (sndStep >= snd->length) {
-      ledcWriteTone(BUZZER_CH, 0);
+      ledcWriteTone(BUZZER_LEDC_TARGET, 0);
       sndIndex = -1;
       sndStep = 0;
       return;
     }
 
-    ledcWriteTone(BUZZER_CH, snd->freqs[sndStep]);
+    ledcWriteTone(BUZZER_LEDC_TARGET, snd->freqs[sndStep]);
     sndNext = now + snd->times[sndStep];
     sndStep++;
   }
 }
 
 // ---- public sound API ----
-void sndClick()       { if (!soundEnabled) return; sndIndex = 0; sndStep = 0; }
-void sndGoodFeed()    { if (!soundEnabled) return; sndIndex = 1; sndStep = 0; ledsHappy(); }
-void sndBadFeed()     { if (!soundEnabled) return; sndIndex = 2; sndStep = 0; ledsSad(); }
-void sndDiscover()    { if (!soundEnabled) return; sndIndex = 3; sndStep = 0; ledsWifi(); }
-void sndRestStart()   { if (!soundEnabled) return; sndIndex = 4; sndStep = 0; }
-void sndRestEnd()     { if (!soundEnabled) return; sndIndex = 5; sndStep = 0; }
-void sndHatch()       { if (!soundEnabled) return; sndIndex = 6; sndStep = 0; }
+// При запуске звука сбрасываем sndNext в 0, чтобы следующий sndUpdate() сразу проиграл первый тон.
+void sndClick()       { if (!soundEnabled) return; sndNext = 0; sndIndex = 0; sndStep = 0; }
+void sndGoodFeed()    { if (!soundEnabled) return; sndNext = 0; sndIndex = 1; sndStep = 0; ledsHappy(); }
+void sndBadFeed()     { if (!soundEnabled) return; sndNext = 0; sndIndex = 2; sndStep = 0; ledsSad(); }
+void sndDiscover()    { if (!soundEnabled) return; sndNext = 0; sndIndex = 3; sndStep = 0; ledsWifi(); }
+void sndRestStart()   { if (!soundEnabled) return; sndNext = 0; sndIndex = 4; sndStep = 0; }
+void sndRestEnd()     { if (!soundEnabled) return; sndNext = 0; sndIndex = 5; sndStep = 0; }
+void sndHatch()       { if (!soundEnabled) return; sndNext = 0; sndIndex = 6; sndStep = 0; }
 
-// ---------- TFT brightness ----------
+// ---------- Display brightness (AMOLED via gfx) ----------
 void applyTftBrightness() {
   uint8_t val = (tftBrightnessIndex == 0) ? 60 :
                 (tftBrightnessIndex == 1) ? 150 : 255;
-  ledcWrite(0, val);
+  setDisplayBrightness(val);
 }
 
 // ---------- WiFi scan ----------
@@ -373,8 +293,6 @@ void saveState() {
 
   prefs.putBool("sound", soundEnabled);
   prefs.putUChar("tftBri", tftBrightnessIndex);
-  prefs.putUChar("ledBri", ledBrightnessIndex);
-  prefs.putBool("neo", neoPixelsEnabled);
 
   prefs.putUChar("tCur", traitCuriosity);
   prefs.putUChar("tAct", traitActivity);
@@ -394,8 +312,6 @@ void loadState() {
 
     soundEnabled       = true;
     tftBrightnessIndex = 1;
-    ledBrightnessIndex = 1;
-    neoPixelsEnabled   = true;
 
     traitCuriosity = random(40, 90);
     traitActivity  = random(30, 90);
@@ -419,8 +335,6 @@ void loadState() {
 
   soundEnabled       = prefs.getBool("sound", true);
   tftBrightnessIndex = prefs.getUChar("tftBri", 1);
-  ledBrightnessIndex = prefs.getUChar("ledBri", 1);
-  neoPixelsEnabled   = prefs.getBool("neo", true);
 
   traitCuriosity = prefs.getUChar("tCur", 70);
   traitActivity  = prefs.getUChar("tAct", 60);
@@ -506,14 +420,7 @@ void stepRest() {
     case REST_DEEP:
       // Stay on egg_hatch_1 while sleeping
       // (restFrameIndex is kept at 0)
-      if (neoPixelsEnabled) {
-        float phase = (now - restPhaseStart) / (float)REST_BREATHE_MS;
-        int breathe = (int)(sin(phase) * 40.0f + 60.0f);
-        breathe = constrain(breathe, 0, 255);
-        for (int i = 0; i < LED_COUNT; i++)
-          leds.setPixelColor(i, leds.Color(0, 0, breathe));
-        leds.show();
-      }
+      // Indicator shows INDICATOR_REST (set at rest start)
 
       if (!restStatsApplied && now - restPhaseStart > restDurationMs / 2) {
         int hungerDelta    = -3;
@@ -808,16 +715,20 @@ void logicTick() {
 //  stopBuzzerIfNeeded();
 }
 
-// ---------- Button handling ----------
+// ---------- Button handling (input module: touch + BOOT/PWR) ----------
 void handleButtons() {
-  bool up   = buttonPressed(BTN_UP,   lastUp);
-  bool ok   = buttonPressed(BTN_OK,   lastOk);
-  bool down = buttonPressed(BTN_DOWN, lastDown);
+  inputPoll();
+  InputButton e = inputConsumeEvent();
+  if (e == INPUT_NONE) return;
+  if (e == INPUT_UP)   DBG("[input] touch zone: UP");
+  if (e == INPUT_DOWN) DBG("[input] touch zone: DOWN");
+  bool up   = (e == INPUT_UP);
+  bool ok   = (e == INPUT_OK);
+  bool down = (e == INPUT_DOWN);
+  bool r1   = (e == INPUT_R1);
+  bool r2   = (e == INPUT_R2);
+  bool r3   = (e == INPUT_R3);
 
-  bool r1 = buttonPressed(BTN_RIGHT1, lastR1);
-  bool r2 = buttonPressed(BTN_RIGHT2, lastR2);
-  bool r3 = buttonPressed(BTN_RIGHT3, lastR3);
-  
   // ===== DIRECT QUICK-ACCESS PAGES =====
   if (currentScreen == SCREEN_HOME) {
       if (r1) {
@@ -872,40 +783,16 @@ void handleButtons() {
       return;
     }
 
-  // HOME + Hotkeys
+  // HOME (R1/R2/R3 handled above; OK -> menu)
   if (currentScreen == SCREEN_HOME) {
-  
-      if (buttonPressed(BTN_RIGHT1, lastR1)) {
-          sndClick();
-          currentScreen = SCREEN_PET_STATUS;
-          uiOnScreenChange(currentScreen);
-          return;
-      }
-  
-      if (buttonPressed(BTN_RIGHT2, lastR2)) {
-          sndClick();
-          currentScreen = SCREEN_ENVIRONMENT;
-          uiOnScreenChange(currentScreen);
-          return;
-      }
-  
-      if (buttonPressed(BTN_RIGHT3, lastR3)) {
-          sndClick();
-          currentScreen = SCREEN_DIAGNOSTICS;
-          uiOnScreenChange(currentScreen);
-          return;
-      }
-  
       if (ok) {
           sndClick();
           currentScreen = SCREEN_MENU;
           mainMenuIndex = 0;
           uiOnScreenChange(currentScreen);
       }
-  
       return;
   }
-
 
   // MAIN MENU
   if (currentScreen == SCREEN_MENU) {
@@ -950,11 +837,11 @@ void handleButtons() {
   if (currentScreen == SCREEN_CONTROLS) {
     if (up) {
       sndClick();
-      controlsIndex = (controlsIndex - 1 + 5) % 5;
+      controlsIndex = (controlsIndex - 1 + 3) % 3;
     }
     if (down) {
       sndClick();
-      controlsIndex = (controlsIndex + 1) % 5;
+      controlsIndex = (controlsIndex + 1) % 3;
     }
     if (ok) {
       sndClick();
@@ -964,22 +851,13 @@ void handleButtons() {
           applyTftBrightness();
           break;
         case 1:
-          ledBrightnessIndex = (ledBrightnessIndex + 1) % 3;
-          applyLedBrightness();
-          break;
-        case 2:
           soundEnabled = !soundEnabled;
           if (!soundEnabled) {
-            ledcWriteTone(BUZZER_CH, 0);
+            ledcWriteTone(BUZZER_LEDC_TARGET, 0);
             buzzerEndTime = 0;
           }
           break;
-        case 3:
-          neoPixelsEnabled = !neoPixelsEnabled;
-          if (!neoPixelsEnabled) ledsOff();
-          else applyLedBrightness();
-          break;
-        case 4:
+        case 2:
           currentScreen = SCREEN_MENU;
           uiOnScreenChange(currentScreen);
           break;
@@ -1047,74 +925,34 @@ void handleButtons() {
   }
 }
 
-void startupBreathing(uint8_t r, uint8_t g, uint8_t b) {
-  static uint16_t t = 0;
-
-  // breathing curve: 0 → 255 → 0
-  float brightness = (sin(t / 25.0) + 1.0) * 0.5 * 255;
-
-  for (int i = 0; i < LED_COUNT; i++) {
-    leds.setPixelColor(i, leds.Color(
-      (r * brightness) / 255,
-      (g * brightness) / 255,
-      (b * brightness) / 255
-    ));
-  }
-
-  leds.show();
-  t++;
-  vTaskDelay(1);
-}
-
 // ---------- HACK: declare hatchSequenceStarted from ui.cpp ----------
 bool hatchSequenceStarted = false;
 
 
 // ---------- setup & loop ----------
 void setup() {
+  Serial.begin(115200);      // UART0
+  USBSerial.begin(115200);   // USB CDC
+  delay(500);
+  DBG("[TamaFi] start");
 
-  Serial.end();
-  delay(50);
-
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-
-  leds.begin();
-  leds.setBrightness(40);
-  leds.clear();
-  leds.show();
-  
   randomSeed(esp_random());
 
-  pinMode(BTN_UP,   INPUT_PULLUP);
-  pinMode(BTN_OK,   INPUT_PULLUP);
-  pinMode(BTN_DOWN, INPUT_PULLUP);
-  pinMode(BTN_RIGHT1, INPUT_PULLUP);
-  pinMode(BTN_RIGHT2, INPUT_PULLUP);
-  pinMode(BTN_RIGHT3, INPUT_PULLUP);
+  inputInit();
+  DBG(inputTouchInited() ? "[input] FT3168 OK" : "[input] FT3168 init fail");
 
-  tft.init();
-  tft.setRotation(0);
-  tft.setSwapBytes(true);
+  displayAmoledInit();
 
-  fb.setColorDepth(16);
-  fb.createSprite(TFT_W, TFT_H);
-  fb.setSwapBytes(true);
-
-  petSprite.setColorDepth(16);
-  petSprite.createSprite(PET_W, PET_H);
-
-  effectSprite.setColorDepth(16);
-  effectSprite.createSprite(EFFECT_W, EFFECT_H);
-
-  // TFT backlight PWM
-  ledcSetup(0, 12000, 8);
-  ledcAttachPin(TFT_BRIGHTNESS_PIN, 0);
-
-  // Buzzer PWM
+  // Buzzer PWM (device_config.h: BUZZER_PIN = 46). На плате 1.8" AMOLED пин 46 = PA усилителя ES8311 (I2S), не отдельный буззер.
+#if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= 0x030000
+  if (!ledcAttach(BUZZER_PIN, 4000, 8))
+    DBG("[buzzer] ledcAttach fail");
+#else
   ledcSetup(BUZZER_CH, 4000, 8);
   ledcAttachPin(BUZZER_PIN, BUZZER_CH);
-  ledcWriteTone(BUZZER_CH, 0);
+#endif
+  ledcWriteTone(BUZZER_LEDC_TARGET, 0);
+  // На плате 1.8" AMOLED пин 46 = PA (усилитель ES8311), отдельного буззера нет. Звук возможен только через I2S+ES8311 (см. examples/15_ES8311).
 
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
@@ -1122,7 +960,6 @@ void setup() {
   prefs.begin("tamafi2", false);
   loadState();
   applyTftBrightness();
-  applyLedBrightness();
 
   unsigned long now = millis();
   hungerTimer      = now;
@@ -1139,21 +976,12 @@ void setup() {
   currentScreen = SCREEN_BOOT;
   uiInit();
   uiOnScreenChange(currentScreen);
-
-  startupBreathing(0, 150, 255);
 }
 
 void loop() {
   unsigned long now = millis();
 
-  sndUpdate();         
-  
-  if (!neoPixelsEnabled) {
-    ledsOff();   
-  } else {
-      for (int i = 0; i < LED_COUNT; i++) leds.setPixelColor(i, 0);
-  }
-
+  sndUpdate();
   stopBuzzerIfNeeded(); 
 
   if (now - lastLogicTick >= 100) {
