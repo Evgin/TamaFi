@@ -23,7 +23,7 @@ static unsigned long touchStartMs = 0;
 static InputButton touchStartButton = INPUT_NONE;
 static bool pendingOkTap = false;
 static unsigned long pendingOkTapTime = 0;
-static const unsigned long DOUBLE_OK_MS = 350;
+static const unsigned long DOUBLE_OK_MS = 200;
 
 // FT3168 через библиотеку (как в примере 02_Drawing_board)
 static std::shared_ptr<Arduino_IIC_DriveBus> touchBus;
@@ -96,8 +96,8 @@ static void expanderInitForTouch() {
 
 void inputInit() {
   Wire.begin(IIC_SDA, IIC_SCL);
-  pinMode(BOOT_PIN, INPUT_PULLUP);
-  lastBoot = (digitalRead(BOOT_PIN) == HIGH);
+  pinMode(BOOT_BTN_PIN, INPUT_PULLUP);
+  lastBoot = (digitalRead(BOOT_BTN_PIN) == HIGH);
   lastPwr = !readPwr();
 
   expanderInitForTouch();

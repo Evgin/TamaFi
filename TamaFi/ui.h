@@ -74,6 +74,15 @@ struct WifiStats {
   int wpaCount    = 0;
 };
 
+// Список WiFi‑сетей последнего сканирования (для экрана Environment)
+const int MAX_WIFI_LIST = 12;
+
+struct WifiNetworkInfo {
+  String ssid;
+  int    rssi;
+  bool   isOpen;
+};
+
 // ============ Display: use getContentCanvas(), flushContentAndDrawControlBar(), drawSpriteToContent() ============
 
 // ============ Shared game state (defined in TamaFi.ino) ============
@@ -84,6 +93,9 @@ extern RestPhase restPhase;
 
 extern Pet       pet;
 extern WifiStats wifiStats;
+
+extern WifiNetworkInfo wifiList[MAX_WIFI_LIST];
+extern int             wifiListCount;
 
 extern Mood      currentMood;
 extern Stage     petStage;

@@ -508,9 +508,37 @@ static void screenEnvironment() {
     getContentCanvas()->setCursor(10, 94);
     getContentCanvas()->print("Avg RSSI : "); getContentCanvas()->print(wifiStats.avgRSSI);
 
-    // Подсказка "OK = Back" скрыта
-    //getContentCanvas()->setCursor(10, 200);
-    //getContentCanvas()->print("OK = Back");
+    // ------ List of networks from last scan ------
+    if (wifiStats.netCount > 0 && wifiListCount > 0) {
+        getContentCanvas()->setCursor(10, 112);
+        getContentCanvas()->print("Last scan:");
+
+        int maxRows = 6; // чтобы влезло в 240px по высоте
+        int rows = wifiListCount < maxRows ? wifiListCount : maxRows;
+
+        for (int i = 0; i < rows; i++) {
+            int y = 126 + i * 14;
+            const WifiNetworkInfo &info = wifiList[i];
+
+            // Номер и SSID (или "(hidden)")
+            getContentCanvas()->setCursor(10, y);
+            getContentCanvas()->setTextColor(TFT_CYAN);
+            getContentCanvas()->print(i + 1);
+            getContentCanvas()->print(") ");
+            getContentCanvas()->setTextColor(TFT_WHITE);
+            getContentCanvas()->print(info.ssid);
+
+            // RSSI и тип
+            getContentCanvas()->setCursor(150, y);
+            getContentCanvas()->setTextColor(TFT_YELLOW);
+            getContentCanvas()->print(info.rssi);
+            getContentCanvas()->print("dBm");
+
+            getContentCanvas()->setCursor(210, y);
+            getContentCanvas()->setTextColor(info.isOpen ? TFT_GREEN : TFT_RED);
+            getContentCanvas()->print(info.isOpen ? "O" : "L");
+        }
+    }
 
     flushContentAndDrawControlBar();
 }

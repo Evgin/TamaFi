@@ -11,6 +11,7 @@ HWCDC USBSerial;
 
 #include "display_amoled.h"
 #include "input.h"
+#include "sound_es8311.h"
 #include "ui.h"
 #include "ui_anim.h"
 
@@ -41,6 +42,9 @@ RestPhase restPhase = REST_NONE;
 
 Pet       pet;
 WifiStats wifiStats;
+
+WifiNetworkInfo wifiList[MAX_WIFI_LIST];
+int             wifiListCount = 0;
 
 Mood      currentMood = MOOD_CALM;
 Stage     petStage    = STAGE_BABY;
@@ -180,6 +184,7 @@ RetroSound SND_HATCH = { HATCH_FREQS, HATCH_TIMES, 5 };
 void sndUpdate() {
   if (!soundEnabled) {
     ledcWriteTone(BUZZER_LEDC_TARGET, 0);
+    soundEs8311Stop();
     sndIndex = -1;
     sndStep = 0;
     return;
@@ -187,10 +192,35 @@ void sndUpdate() {
 
   if (sndIndex < 0) return;
 
+  // Воспроизведение через ES8311 (I2S): пошагово, следующий тон — когда текущий доиграл
+  if (soundEs8311Available()) {
+    if (soundEs8311IsPlaying()) return;
+    const RetroSound *snd = nullptr;
+    switch (sndIndex) {
+      case 0: snd = &SND_CLICK;       break;
+      case 1: snd = &SND_GOOD;       break;
+      case 2: snd = &SND_BAD;        break;
+      case 3: snd = &SND_DISC;       break;
+      case 4: snd = &SND_REST_START; break;
+      case 5: snd = &SND_REST_END;   break;
+      case 6: snd = &SND_HATCH;      break;
+      default: sndIndex = -1; sndStep = 0; return;
+    }
+    if (sndStep >= snd->length) {
+      soundEs8311Stop();
+      sndIndex = -1;
+      sndStep = 0;
+      return;
+    }
+    soundEs8311SetTone(snd->freqs[sndStep], snd->times[sndStep]);
+    sndStep++;
+    return;
+  }
+
+  // PWM-буззер (если ES8311 нет)
   unsigned long now = millis();
   if (now >= sndNext) {
     const RetroSound *snd = nullptr;
-
     switch (sndIndex) {
       case 0: snd = &SND_CLICK;       break;
       case 1: snd = &SND_GOOD;        break;
@@ -201,14 +231,12 @@ void sndUpdate() {
       case 6: snd = &SND_HATCH;       break;
       default: sndIndex = -1; sndStep = 0; return;
     }
-
     if (sndStep >= snd->length) {
       ledcWriteTone(BUZZER_LEDC_TARGET, 0);
       sndIndex = -1;
       sndStep = 0;
       return;
     }
-
     ledcWriteTone(BUZZER_LEDC_TARGET, snd->freqs[sndStep]);
     sndNext = now + snd->times[sndStep];
     sndStep++;
@@ -216,6 +244,24 @@ void sndUpdate() {
 }
 
 // ---- public sound API ----
+// Короткий бип UP/DOWN — 800 Hz.
+void sndBeep() {
+  if (!soundEnabled) return;
+  if (soundEs8311Available()) {
+    soundEs8311SetTone(800, 100);
+  } else {
+    buzzerPlay(800, 100);
+  }
+}
+// Короткий бип OK — другой тон (1000 Hz), та же громкость.
+void sndBeepOk() {
+  if (!soundEnabled) return;
+  if (soundEs8311Available()) {
+    soundEs8311SetTone(1000, 100);
+  } else {
+    buzzerPlay(1000, 100);
+  }
+}
 // При запуске звука сбрасываем sndNext в 0, чтобы следующий sndUpdate() сразу проиграл первый тон.
 void sndClick()       { if (!soundEnabled) return; sndNext = 0; sndIndex = 0; sndStep = 0; }
 void sndGoodFeed()    { if (!soundEnabled) return; sndNext = 0; sndIndex = 1; sndStep = 0; ledsHappy(); }
@@ -250,6 +296,7 @@ bool checkWifiScanDone() {
 
   if (n < 0) {
     wifiStats = WifiStats();
+    wifiListCount = 0;
     WiFi.scanDelete();
     return true;
   }
@@ -262,13 +309,29 @@ bool checkWifiScanDone() {
   s.wpaCount    = 0;
   int totalRSSI = 0;
 
+  wifiListCount = 0;
+
   for (int i = 0; i < n; i++) {
     int rssi = WiFi.RSSI(i);
     totalRSSI += rssi;
     if (rssi > -60) s.strongCount++;
-    if (WiFi.SSID(i).length() == 0) s.hiddenCount++;
-    if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) s.openCount++;
-    else s.wpaCount++;
+    String ssid = WiFi.SSID(i);
+    bool isHidden = (ssid.length() == 0);
+    if (isHidden) {
+      s.hiddenCount++;
+    }
+    wifi_auth_mode_t enc = WiFi.encryptionType(i);
+    bool isOpen = (enc == WIFI_AUTH_OPEN);
+    if (isOpen) s.openCount++;
+    else        s.wpaCount++;
+
+    // Сохраняем ограниченный список сетей для вывода в UI
+    if (wifiListCount < MAX_WIFI_LIST) {
+      WifiNetworkInfo &info = wifiList[wifiListCount++];
+      info.ssid   = isHidden ? String("(hidden)") : ssid;
+      info.rssi   = rssi;
+      info.isOpen = isOpen;
+    }
   }
 
   s.avgRSSI = (n > 0) ? (totalRSSI / n) : -100;
@@ -606,6 +669,7 @@ void resetPet(bool fullReset) {
 
   wifiStats = WifiStats();
   lastWifiScanTime = 0;
+  wifiListCount = 0;
 
   unsigned long now = millis();
   hungerTimer    = now;
@@ -720,11 +784,13 @@ void handleButtons() {
   inputPoll();
   InputButton e = inputConsumeEvent();
   if (e == INPUT_NONE) return;
+  bool up   = (e == INPUT_UP);
+  bool down = (e == INPUT_DOWN);
+  bool ok   = (e == INPUT_OK);
+  if (up || down) { sndBeep();   for (int i = 0; i < 4 && soundEs8311Feed(); i++) { } } // бип сразу, без задержки
+  if (ok)          { sndBeepOk(); for (int i = 0; i < 4 && soundEs8311Feed(); i++) { } }
   if (e == INPUT_UP)   DBG("[input] touch zone: UP");
   if (e == INPUT_DOWN) DBG("[input] touch zone: DOWN");
-  bool up   = (e == INPUT_UP);
-  bool ok   = (e == INPUT_OK);
-  bool down = (e == INPUT_DOWN);
   bool r1   = (e == INPUT_R1);
   bool r2   = (e == INPUT_R2);
   bool r3   = (e == INPUT_R3);
@@ -854,6 +920,7 @@ void handleButtons() {
           soundEnabled = !soundEnabled;
           if (!soundEnabled) {
             ledcWriteTone(BUZZER_LEDC_TARGET, 0);
+            soundEs8311Stop();
             buzzerEndTime = 0;
           }
           break;
@@ -943,16 +1010,19 @@ void setup() {
 
   displayAmoledInit();
 
-  // Buzzer PWM (device_config.h: BUZZER_PIN = 46). На плате 1.8" AMOLED пин 46 = PA усилителя ES8311 (I2S), не отдельный буззер.
+  // Звук: ES8311 (I2S) на плате 1.8" AMOLED; при неудаче — PWM на PA (обычно тихо).
+  if (soundEs8311Init()) {
+    DBG("[sound] ES8311 OK");
+  } else {
 #if defined(ESP_ARDUINO_VERSION) && ESP_ARDUINO_VERSION >= 0x030000
-  if (!ledcAttach(BUZZER_PIN, 4000, 8))
-    DBG("[buzzer] ledcAttach fail");
+    if (!ledcAttach(BUZZER_PIN, 4000, 8))
+      DBG("[buzzer] ledcAttach fail");
 #else
-  ledcSetup(BUZZER_CH, 4000, 8);
-  ledcAttachPin(BUZZER_PIN, BUZZER_CH);
+    ledcSetup(BUZZER_CH, 4000, 8);
+    ledcAttachPin(BUZZER_PIN, BUZZER_CH);
 #endif
-  ledcWriteTone(BUZZER_LEDC_TARGET, 0);
-  // На плате 1.8" AMOLED пин 46 = PA (усилитель ES8311), отдельного буззера нет. Звук возможен только через I2S+ES8311 (см. examples/15_ES8311).
+    ledcWriteTone(BUZZER_LEDC_TARGET, 0);
+  }
 
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
@@ -981,6 +1051,8 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  // Поддерживаем буфер I2S полным (несколько порций за loop — меньше прерываний звука)
+  for (int i = 0; i < 4 && soundEs8311Feed(); i++) { }
   sndUpdate();
   stopBuzzerIfNeeded(); 
 

@@ -28,16 +28,20 @@
 #define TP_INT  21
 
 // ---------- Buttons ----------
-#define BOOT_PIN  0   // GPIO0, LOW = pressed
+#define BOOT_BTN_PIN  0   // GPIO0, LOW = pressed (не BOOT_PIN — конфликт с esp32-hal.h)
 // PWR = EXIO4 via TCA9554 (I2C same as touch); HIGH = pressed
 #define TCA9554_I2C_ADDR  0x20
 #define PWR_EXIO_BIT      4
 
-// ---------- Sound ----------
-// Плата 1.8" AMOLED: отдельного PWM-буззера нет, GPIO 46 = PA усилителя ES8311 (I2S).
-// Звук возможен только через инициализацию ES8311 + I2S (пример: examples/15_ES8311). Пока не реализовано.
-#define BUZZER_PIN  46
+// ---------- Sound (ES8311 I2S на плате 1.8" AMOLED) ----------
+#define BUZZER_PIN  46   // PA (power amplifier enable) — подать HIGH для выхода на динамик
 #define BUZZER_CH   0
+// I2S для ES8311 (Mylibrary/pin_config.h)
+#define I2S_MCK_IO  16
+#define I2S_BCK_IO  9
+#define I2S_DI_IO   10
+#define I2S_WS_IO   45
+#define I2S_DO_IO   8
 
 // ---------- Display brightness ----------
 // Controlled via gfx->Display_Brightness(0..255), no separate PWM pin
