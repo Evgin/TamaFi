@@ -703,7 +703,7 @@ void uiOnScreenChange(Screen newScreen) {
     }
 
     // Action strip only on HOME screen
-    setActionStripVisible(newScreen == SCREEN_HOME);
+    setActionStripVisible(false); // TODO: action strip container — temporarily hidden
 }
 
 void uiDrawScreen(Screen screen,
