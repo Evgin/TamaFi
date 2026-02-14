@@ -22,3 +22,9 @@ bool soundEs8311IsPlaying(void);
 
 // Звук через ES8311 доступен (инициализация прошла успешно).
 bool soundEs8311Available(void);
+
+// Установить громкость ES8311 (0-100, аппаратный регистр).
+void soundEs8311SetHwVolume(int volume);
+
+// Установить амплитуду тона (программная громкость генератора).
+void soundEs8311SetAmplitude(int amplitude);

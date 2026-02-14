@@ -14,7 +14,7 @@
 #define I2S_SAMPLE_RATE  16000
 #define I2S_NUM_CH       2
 #define TONE_BUF_SAMPLES 1024    // больше буфер — меньше прерываний при занятом loop()
-#define TONE_AMPLITUDE   2500    // ещё тише
+static int toneAmplitude = 2500; // программная амплитуда (управляется через soundSetVolume)
 
 static I2SClass i2s;
 static void* es8311_handle = nullptr;
@@ -117,7 +117,7 @@ bool soundEs8311Feed(void) {
       gain = (float)i / (float)fadeLen;
     else if (i >= numStereoSamples - fadeLen)
       gain = (float)(numStereoSamples - 1 - i) / (float)fadeLen;
-    int16_t s = (int16_t)(TONE_AMPLITUDE * gain * sinf(tonePhase));
+    int16_t s = (int16_t)(toneAmplitude * gain * sinf(tonePhase));
     tonePhase += omega;
     buf[i * 2] = s;
     buf[i * 2 + 1] = s;
@@ -136,4 +136,14 @@ bool soundEs8311IsPlaying(void) {
 
 bool soundEs8311Available(void) {
   return inited;
+}
+
+void soundEs8311SetHwVolume(int volume) {
+  if (inited && es8311_handle) {
+    es8311_voice_volume_set(es8311_handle, volume, nullptr);
+  }
+}
+
+void soundEs8311SetAmplitude(int amplitude) {
+  toneAmplitude = amplitude;
 }

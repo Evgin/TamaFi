@@ -15,6 +15,7 @@
 #define LCD_H       448
 #define CONTENT_H   368   // content area height (square 368x368)
 #define CONTROL_H   80    // bottom strip for virtual buttons / indicators
+#define ACTION_STRIP_H  50  // action strip overlay height (drawn over bottom of content)
 
 // Logical content size (game renders at this resolution, then scaled to CONTENT_H x CONTENT_H)
 #define CONTENT_LOGICAL_W  240
@@ -42,6 +43,9 @@
 #define I2S_DI_IO   10
 #define I2S_WS_IO   45
 #define I2S_DO_IO   8
+
+// ---------- Power Management (AXP2101 PMIC, I2C same bus as touch) ----------
+#define AXP2101_I2C_ADDR  0x34
 
 // ---------- Display brightness ----------
 // Controlled via gfx->Display_Brightness(0..255), no separate PWM pin

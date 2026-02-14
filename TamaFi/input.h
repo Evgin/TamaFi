@@ -10,7 +10,8 @@ enum InputButton {
   INPUT_DOWN,
   INPUT_R1,
   INPUT_R2,
-  INPUT_R3
+  INPUT_R3,
+  INPUT_BOOT       // Hardware BOOT button (GPIO0) — sleep/wake toggle
 };
 
 // Call once from setup()
@@ -24,3 +25,9 @@ InputButton inputConsumeEvent();
 
 // true, если тач (FT3168) успешно инициализирован
 bool inputTouchInited();
+
+// Timestamp (millis) последнего касания/кнопки. Для детекции бездействия.
+unsigned long inputLastActiveMs();
+
+// Принудительный сброс таймера бездействия (например, при пробуждении из сна).
+void inputResetActivity();

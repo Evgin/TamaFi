@@ -17,6 +17,7 @@ static bool lastTouchActive = false;
 static int lastTouchX = 0, lastTouchY = 0;
 static unsigned long lastI2CPollMs = 0;
 static const unsigned long I2C_POLL_INTERVAL_MS = 20;
+static unsigned long lastActiveMs = 0;  // для детекции бездействия (AutoSleep)
 
 // Двойной тап по центральной зоне (OK) => виртуальная кнопка R1
 static unsigned long touchStartMs = 0;
@@ -100,6 +101,8 @@ void inputInit() {
   lastBoot = (digitalRead(BOOT_BTN_PIN) == HIGH);
   lastPwr = !readPwr();
 
+  lastActiveMs = millis();
+
   expanderInitForTouch();
   delay(50);
 
@@ -114,11 +117,22 @@ void inputInit() {
 }
 
 bool inputTouchInited() { return touchInited; }
+unsigned long inputLastActiveMs() { return lastActiveMs; }
 
 void inputPoll() {
   if (pendingEvent != INPUT_NONE) return;
 
   unsigned long now = millis();
+
+  // --- Опрос кнопки BOOT (GPIO0, LOW = pressed) ---
+  bool bootNow = (digitalRead(BOOT_BTN_PIN) == LOW);
+  if (bootNow && !lastBoot) {
+    pendingEvent = INPUT_BOOT;
+    lastActiveMs = now;
+  }
+  lastBoot = bootNow;
+  if (pendingEvent != INPUT_NONE) return;   // BOOT сгенерировал событие — не читать тач
+
   if (now - lastI2CPollMs >= I2C_POLL_INTERVAL_MS) {
     lastI2CPollMs = now;
     // PWR не опрашиваем — кнопка не используется, TCA9554 может отсутствовать (NACK в логе)
@@ -126,6 +140,7 @@ void inputPoll() {
     int16_t tx, ty;
     bool touchActive = readTouchOnInterrupt(tx, ty);
     if (touchActive) {
+      lastActiveMs = now;            // любое касание в любой зоне = активность
       if (!lastTouchActive) {
         // Старт нового тапа — запоминаем кнопку и время
         InputButton b = mapTouchToButton(tx, ty);
@@ -172,5 +187,10 @@ void inputPoll() {
 InputButton inputConsumeEvent() {
   InputButton e = pendingEvent;
   pendingEvent = INPUT_NONE;
+  if (e != INPUT_NONE) lastActiveMs = millis();  // любое событие = активность
   return e;
+}
+
+void inputResetActivity() {
+  lastActiveMs = millis();
 }

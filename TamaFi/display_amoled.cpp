@@ -6,6 +6,8 @@
 // display/Arduino_SH8601.h, canvas/Arduino_Canvas.h и т.д. — явные инклюды не нужны.
 #include <Arduino_GFX_Library.h>
 
+static bool actionStripVisible = false;
+
 // Scale 240x240 canvas to 368x368 and draw to output (Canvas calls draw16bitRGBBitmap on flush)
 class ScalerGFX : public Arduino_GFX {
  public:
@@ -24,12 +26,21 @@ class ScalerGFX : public Arduino_GFX {
     }
     // Scale 240x240 -> 368x368 (nearest neighbor)
     static uint16_t rowBuf[LCD_W];
+    const int stripStartY = CONTENT_H - ACTION_STRIP_H;   // 318
+    const int stripW      = LCD_W * 3 / 4;                // 276
+    const int stripX      = LCD_W - stripW;                // right-aligned
     for (int dy = 0; dy < CONTENT_H; dy++) {
       int sy = dy * CONTENT_LOGICAL_H / CONTENT_H;
       const uint16_t* srcRow = bitmap + (size_t)sy * CONTENT_LOGICAL_W;
       for (int dx = 0; dx < LCD_W; dx++) {
         int sx = dx * CONTENT_LOGICAL_W / CONTENT_SCALE_NUM;
         rowBuf[dx] = srcRow[sx];
+      }
+      // Overlay action strip — right-aligned, 3/4 screen width, only on HOME screen
+      if (actionStripVisible && dy >= stripStartY) {
+        for (int dx = stripX; dx < stripX + stripW; dx++) {
+          rowBuf[dx] = TFT_RED;
+        }
       }
       _output->draw16bitRGBBitmap(0, dy, rowBuf, LCD_W, 1);
     }
@@ -44,6 +55,7 @@ static Arduino_GFX* realGfx = nullptr;
 static ScalerGFX* scalerGfx = nullptr;
 static Arduino_Canvas* contentCanvas = nullptr;
 static IndicatorState indicatorState = INDICATOR_OFF;
+static bool sleeping = false;
 
 // Один раз рисуем нижнюю панель с тач-контролами (фон + иконки UP/OK/DOWN)
 static void drawControlBarStatic() {
@@ -103,8 +115,30 @@ void setDisplayBrightness(uint8_t value) {
   if (realGfx) static_cast<Arduino_SH8601*>(realGfx)->setBrightness(value);
 }
 
+void displaySleep() {
+  if (!sleeping) {
+    setDisplayBrightness(0);
+    sleeping = true;
+  }
+}
+
+void displayWake(uint8_t brightnessIndex) {
+  if (sleeping) {
+    uint8_t val = (brightnessIndex == 0) ? 60 :
+                  (brightnessIndex == 1) ? 150 : 255;
+    setDisplayBrightness(val);
+    sleeping = false;
+  }
+}
+
+bool displayIsAsleep() { return sleeping; }
+
 void setIndicatorState(IndicatorState s) {
   indicatorState = s;
+}
+
+void setActionStripVisible(bool visible) {
+  actionStripVisible = visible;
 }
 
 void flushContentAndDrawControlBar() {

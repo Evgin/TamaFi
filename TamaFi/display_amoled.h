@@ -16,9 +16,17 @@ Arduino_GFX* getDisplayGfx();
 // Яркость 0–255 (обёртка над setBrightness SH8601).
 void setDisplayBrightness(uint8_t value);
 
+// AutoSleep: выключить/включить дисплей (яркость 0 / восстановление).
+void displaySleep();
+void displayWake(uint8_t brightnessIndex);  // brightnessIndex: 0=Low(60), 1=Mid(150), 2=High(255)
+bool displayIsAsleep();
+
 // Indicator state for control bar (replaces LED feedback)
 enum IndicatorState { INDICATOR_OFF, INDICATOR_HAPPY, INDICATOR_SAD, INDICATOR_WIFI, INDICATOR_REST };
 void setIndicatorState(IndicatorState s);
+
+// Show/hide the action strip overlay (only visible on HOME screen).
+void setActionStripVisible(bool visible);
 
 // Scale content 240x240 -> (0,0)-(368,368), then draw control bar (0,368)-(368,448).
 void flushContentAndDrawControlBar();
