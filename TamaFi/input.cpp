@@ -16,7 +16,7 @@ static bool lastPwr = true;
 static bool lastTouchActive = false;
 static int lastTouchX = 0, lastTouchY = 0;
 static unsigned long lastI2CPollMs = 0;
-static const unsigned long I2C_POLL_INTERVAL_MS = 50;
+static const unsigned long I2C_POLL_INTERVAL_MS = 20;
 
 // Двойной тап по центральной зоне (OK) => виртуальная кнопка R1
 static unsigned long touchStartMs = 0;
