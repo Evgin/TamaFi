@@ -2,9 +2,11 @@
 #include "device_config.h"
 
 #include <pgmspace.h>
+#define U8G2_FONT_SUPPORT
 // Один зонтичный заголовок библиотеки подключает databus/Arduino_ESP32QSPI.h,
 // display/Arduino_SH8601.h, canvas/Arduino_Canvas.h и т.д. — явные инклюды не нужны.
 #include <Arduino_GFX_Library.h>
+#include <U8g2lib.h>
 
 static bool actionStripVisible = false;
 
@@ -141,8 +143,41 @@ void setActionStripVisible(bool visible) {
   actionStripVisible = visible;
 }
 
+// Draw Open Iconic icons in the action strip (on physical display, after content flush)
+static void drawActionStripIcons() {
+  if (!actionStripVisible) return;
+
+  Arduino_GFX* gfx = realGfx;
+  if (!gfx) return;
+
+  const int stripStartY = CONTENT_H - ACTION_STRIP_H;  // 318
+  const int stripW      = LCD_W * 3 / 4;               // 276
+  const int stripX      = LCD_W - stripW;               // right-aligned
+
+  // Test: draw heart icon (4x = 32px) and medical icon (2x = 16px)
+  gfx->setUTF8Print(true);
+
+  // 4x icon: heart (char 0x48 in open_iconic_all)
+  gfx->setFont(u8g2_font_open_iconic_all_4x_t);
+  gfx->setTextColor(TFT_WHITE);
+  gfx->setCursor(stripX + 10, stripStartY + 8);
+  gfx->write(0x48);  // heart
+
+  // 2x icon: medical (char 0xC2 in open_iconic_all)
+  gfx->setFont(u8g2_font_open_iconic_all_2x_t);
+  gfx->setCursor(stripX + 50, stripStartY + 16);
+  gfx->write(0xC2);  // medical/cross
+
+  // 2x icon: star (char 0xF5)
+  gfx->setCursor(stripX + 80, stripStartY + 16);
+  gfx->write(0xF5);  // star/bookmark
+
+  gfx->setFont();  // reset to default
+}
+
 void flushContentAndDrawControlBar() {
   contentCanvas->flush();
+  drawActionStripIcons();
 }
 
 void drawSpriteToContent(int x, int y, int w, int h, const uint16_t* buffer, uint16_t transparentColor) {

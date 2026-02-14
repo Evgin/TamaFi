@@ -6,6 +6,9 @@
 #include <Arduino.h>
 #include "HWCDC.h"
 
+#define U8G2_FONT_SUPPORT
+#include <U8g2lib.h>
+
 #include "pet_logic.h"
 #include "sound.h"
 #include "wifi_service.h"
