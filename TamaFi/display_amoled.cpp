@@ -1,6 +1,12 @@
 #include "display_amoled.h"
 #include "device_config.h"
 
+#if UI_DEBUG_TIMING
+static unsigned long lastFlushMs = 0;
+#endif
+#include "navigation.h"
+#include "pet_logic.h"
+
 #include <pgmspace.h>
 #define U8G2_FONT_SUPPORT
 // Один зонтичный заголовок библиотеки подключает databus/Arduino_ESP32QSPI.h,
@@ -9,6 +15,37 @@
 #include <U8g2lib.h>
 
 static bool actionStripVisible = false;
+static int actionStripSelectedIndex = -1;
+static bool actionStripNeedsRedraw = true;   // true = draw strip area; false = skip (preserve)
+
+#define ACTION_STRIP_BORDER_COLOR TFT_WHITE  // visible on green game background
+
+typedef void (*ActionStripCallback)(PetState*);
+
+struct ActionStripButton {
+    char label;
+    ActionStripCallback onSelect;
+};
+
+static void feedCallback(PetState* state) {
+    if (state) petSendCommand(*state, PET_CMD_FEED);
+}
+
+static void medicineCallback(PetState* state) {
+    if (state) petSendCommand(*state, PET_CMD_MEDICINE);
+}
+
+static void statusCallback(PetState* state) {
+    (void)state;
+    navPushScreen(SCREEN_PET_STATUS);
+}
+
+static ActionStripButton actionStripButtons[] = {
+    { 'S', statusCallback },
+    { 'F', feedCallback },
+    { 'M', medicineCallback },
+};
+static const int actionStripButtonCount = sizeof(actionStripButtons) / sizeof(actionStripButtons[0]);
 
 // Scale 240x240 canvas to 368x368 and draw to output (Canvas calls draw16bitRGBBitmap on flush)
 class ScalerGFX : public Arduino_GFX {
@@ -27,24 +64,36 @@ class ScalerGFX : public Arduino_GFX {
       return;
     }
     // Scale 240x240 -> 368x368 (nearest neighbor)
-    static uint16_t rowBuf[LCD_W];
-    const int stripStartY = CONTENT_H - ACTION_STRIP_H;   // 318
-    const int stripW      = LCD_W * 3 / 4;                // 276
-    const int stripX      = LCD_W - stripW;                // right-aligned
-    for (int dy = 0; dy < CONTENT_H; dy++) {
-      int sy = dy * CONTENT_LOGICAL_H / CONTENT_H;
-      const uint16_t* srcRow = bitmap + (size_t)sy * CONTENT_LOGICAL_W;
-      for (int dx = 0; dx < LCD_W; dx++) {
-        int sx = dx * CONTENT_LOGICAL_W / CONTENT_SCALE_NUM;
-        rowBuf[dx] = srcRow[sx];
+    // Batch rows to reduce QSPI transaction count (368/32 ≈ 12 транзакций вместо ~23)
+    const int BATCH = 32;
+    static uint16_t batchBuf[LCD_W * BATCH];
+    const int stripStartY = CONTENT_H - ACTION_STRIP_H;
+
+    for (int dyStart = 0; dyStart < CONTENT_H; dyStart += BATCH) {
+      int dyEnd = (dyStart + BATCH < CONTENT_H) ? dyStart + BATCH : CONTENT_H;
+      int batchRows = dyEnd - dyStart;
+
+      // Skip strip area when visible and no redraw needed
+      if (actionStripVisible && !actionStripNeedsRedraw && dyStart >= stripStartY) {
+        continue;
       }
-      // Overlay action strip — right-aligned, 3/4 screen width, only on HOME screen
-      if (actionStripVisible && dy >= stripStartY) {
-        for (int dx = stripX; dx < stripX + stripW; dx++) {
-          rowBuf[dx] = TFT_RED;
+      if (actionStripVisible && !actionStripNeedsRedraw && dyEnd > stripStartY) {
+        // Partial batch: only draw rows before stripStartY
+        if (dyStart >= stripStartY) continue;
+        dyEnd = stripStartY;
+        batchRows = dyEnd - dyStart;
+      }
+
+      int writeIdx = 0;
+      for (int dy = dyStart; dy < dyEnd; dy++) {
+        int sy = dy * CONTENT_LOGICAL_H / CONTENT_H;
+        const uint16_t* srcRow = bitmap + (size_t)sy * CONTENT_LOGICAL_W;
+        for (int dx = 0; dx < LCD_W; dx++) {
+          int sx = dx * CONTENT_LOGICAL_W / CONTENT_SCALE_NUM;
+          batchBuf[writeIdx++] = srcRow[sx];
         }
       }
-      _output->draw16bitRGBBitmap(0, dy, rowBuf, LCD_W, 1);
+      _output->draw16bitRGBBitmap(0, dyStart, batchBuf, LCD_W, batchRows);
     }
   }
 
@@ -59,42 +108,58 @@ static Arduino_Canvas* contentCanvas = nullptr;
 static IndicatorState indicatorState = INDICATOR_OFF;
 static bool sleeping = false;
 
-// Один раз рисуем нижнюю панель с тач-контролами (фон + иконки UP/OK/DOWN)
-static void drawControlBarStatic() {
+// Рисуем нижнюю панель с тач-контролами. menuMode: true = UP/DOWN, false = LEFT/RIGHT.
+static void drawControlBar(bool menuMode) {
   Arduino_GFX* gfx = getDisplayGfx();
   if (!gfx) return;
 
   const int thirdW = LCD_W / 3;
-
-  // Общий чёрный фон полосы
-  gfx->fillRect(0, CONTENT_H, LCD_W, CONTROL_H, TFT_BLACK);
-  // Разделительная линия сверху сейчас не нужна
-  //gfx->drawRect(0, CONTENT_H, LCD_W, 1, TFT_DARKGREY);
-
-  // Координаты центров зон
   const int centerY = CONTENT_H + CONTROL_H / 2;
-  const int upCenterX   = thirdW / 2;
-  const int okCenterX   = thirdW + thirdW / 2;
-  const int downCenterX = 2 * thirdW + (LCD_W - 2 * thirdW) / 2;
+  const int leftCenterX  = thirdW / 2;
+  const int okCenterX    = thirdW + thirdW / 2;
+  const int rightCenterX = 2 * thirdW + (LCD_W - 2 * thirdW) / 2;
 
-  // UP: треугольник вверх
-  gfx->fillTriangle(
-    upCenterX,           centerY - 10,       // верхняя вершина
-    upCenterX - 8,       centerY + 6,
-    upCenterX + 8,       centerY + 6,
-    TFT_WHITE
-  );
+  gfx->fillRect(0, CONTENT_H, LCD_W, CONTROL_H, TFT_BLACK);
 
-  // OK: кружок
+  if (menuMode) {
+    // UP: треугольник вверх
+    gfx->fillTriangle(
+      leftCenterX,        centerY - 10,
+      leftCenterX - 8,    centerY + 6,
+      leftCenterX + 8,    centerY + 6,
+      TFT_WHITE
+    );
+    // DOWN: треугольник вниз
+    gfx->fillTriangle(
+      rightCenterX,       centerY + 10,
+      rightCenterX - 8,   centerY - 6,
+      rightCenterX + 8,   centerY - 6,
+      TFT_WHITE
+    );
+  } else {
+    // LEFT: треугольник влево
+    gfx->fillTriangle(
+      leftCenterX - 10,   centerY,
+      leftCenterX + 6,    centerY - 8,
+      leftCenterX + 6,    centerY + 8,
+      TFT_WHITE
+    );
+    // RIGHT: треугольник вправо
+    gfx->fillTriangle(
+      rightCenterX + 10,  centerY,
+      rightCenterX - 6,   centerY - 8,
+      rightCenterX - 6,   centerY + 8,
+      TFT_WHITE
+    );
+  }
+
+  // OK: кружок (всегда по центру)
   gfx->drawCircle(okCenterX, centerY, 8, TFT_WHITE);
+}
 
-  // DOWN: треугольник вниз
-  gfx->fillTriangle(
-    downCenterX,         centerY + 10,       // нижняя вершина
-    downCenterX - 8,     centerY - 6,
-    downCenterX + 8,     centerY - 6,
-    TFT_WHITE
-  );
+void displayControlBarSetScreen(int screen) {
+  bool menuMode = (screen != SCREEN_HOME);
+  drawControlBar(menuMode);
 }
 
 void displayAmoledInit() {
@@ -106,8 +171,7 @@ void displayAmoledInit() {
   contentCanvas->begin();
   setDisplayBrightness(150);
 
-  // Один раз нарисовать нижнюю панель с тач-контролами
-  drawControlBarStatic();
+  drawControlBar(true);  // по умолчанию UP/DOWN (меню)
 }
 
 Arduino_GFX* getContentCanvas() { return contentCanvas; }
@@ -141,43 +205,104 @@ void setIndicatorState(IndicatorState s) {
 
 void setActionStripVisible(bool visible) {
   actionStripVisible = visible;
+  if (visible) actionStripNeedsRedraw = true;
 }
 
-// Draw Open Iconic icons in the action strip (on physical display, after content flush)
+void actionStripSetSelected(int index) {
+  int prev = actionStripSelectedIndex;
+  if (index < 0) {
+    actionStripSelectedIndex = -1;
+  } else if (index >= actionStripButtonCount) {
+    actionStripSelectedIndex = actionStripButtonCount - 1;
+  } else {
+    actionStripSelectedIndex = index;
+  }
+  if (prev != actionStripSelectedIndex) actionStripNeedsRedraw = true;
+}
+
+int actionStripGetSelected() {
+  return actionStripSelectedIndex;
+}
+
+void actionStripMoveSelection(int delta) {
+  int s = actionStripSelectedIndex;
+  if (delta < 0) {
+    actionStripSetSelected(s <= 0 ? actionStripButtonCount - 1 : s - 1);
+  } else if (delta > 0) {
+    actionStripSetSelected(s < 0 ? 0 : (s + 1) % actionStripButtonCount);
+  }
+}
+
+void actionStripInvokeSelected(PetState* petState) {
+  if (actionStripSelectedIndex >= 0 && actionStripSelectedIndex < actionStripButtonCount) {
+    actionStripButtons[actionStripSelectedIndex].onSelect(petState);
+  }
+}
+
+// Draw action strip buttons (on physical display, after content flush)
 static void drawActionStripIcons() {
   if (!actionStripVisible) return;
 
   Arduino_GFX* gfx = realGfx;
   if (!gfx) return;
 
-  const int stripStartY = CONTENT_H - ACTION_STRIP_H;  // 318
-  const int stripW      = LCD_W * 3 / 4;               // 276
-  const int stripX      = LCD_W - stripW;               // right-aligned
+  actionStripNeedsRedraw = false;
 
-  // Test: draw heart icon (4x = 32px) and medical icon (2x = 16px)
+  const int stripStartY = CONTENT_H - ACTION_STRIP_H;
+  const int stripW      = LCD_W * 3 / 4;
+  const int stripX      = LCD_W - stripW;
+  const int n           = actionStripButtonCount;
+  const int btnY        = stripStartY + (ACTION_STRIP_H - ACTION_STRIP_BTN_SIZE) / 2;
+
   gfx->setUTF8Print(true);
-
-  // 4x icon: heart (char 0x48 in open_iconic_all)
-  gfx->setFont(u8g2_font_open_iconic_all_4x_t);
   gfx->setTextColor(TFT_WHITE);
-  gfx->setCursor(stripX + 10, stripStartY + 8);
-  gfx->write(0x48);  // heart
 
-  // 2x icon: medical (char 0xC2 in open_iconic_all)
-  gfx->setFont(u8g2_font_open_iconic_all_2x_t);
-  gfx->setCursor(stripX + 50, stripStartY + 16);
-  gfx->write(0xC2);  // medical/cross
+  for (int i = 0; i < n; i++) {
+    int x = stripX + stripW - ACTION_STRIP_RIGHT_PADDING
+          - (n - i) * ACTION_STRIP_BTN_SIZE
+          - (n - 1 - i) * ACTION_STRIP_BTN_GAP;
 
-  // 2x icon: star (char 0xF5)
-  gfx->setCursor(stripX + 80, stripStartY + 16);
-  gfx->write(0xF5);  // star/bookmark
+    bool selected = (i == actionStripSelectedIndex);
 
-  gfx->setFont();  // reset to default
+    // Frame: larger square first (when selected), then button on top
+    const int T = 5;  // frame thickness
+    if (selected) {
+      gfx->fillRect(x - T, btnY - T, ACTION_STRIP_BTN_SIZE + 2 * T, ACTION_STRIP_BTN_SIZE + 2 * T, ACTION_STRIP_BORDER_COLOR);
+    }
+    gfx->fillRect(x, btnY, ACTION_STRIP_BTN_SIZE, ACTION_STRIP_BTN_SIZE, TFT_DARKGREY);
+
+    // Label: u8g2_font_10x20_tf (~10x20 px)
+    gfx->setFont(u8g2_font_10x20_tf);
+    const int charW = 10, charH = 20;
+    int cx = x + (ACTION_STRIP_BTN_SIZE - charW) / 2;
+    int cy = btnY + (ACTION_STRIP_BTN_SIZE - charH) / 2 + charH - 1;  // baseline
+    gfx->setCursor(cx, cy);
+    gfx->print(actionStripButtons[i].label);
+  }
+
+  gfx->setFont();
 }
 
 void flushContentAndDrawControlBar() {
+#if UI_DEBUG_TIMING
+  unsigned long t0 = millis();
+#endif
   contentCanvas->flush();
-  drawActionStripIcons();
+#if UI_DEBUG_TIMING
+  lastFlushMs = millis() - t0;
+#endif
+  // Draw action strip only when needed (like control bar — drawn once, not every frame)
+  if (actionStripNeedsRedraw) {
+    drawActionStripIcons();
+  }
+}
+
+unsigned long getLastFlushMs() {
+#if UI_DEBUG_TIMING
+  return lastFlushMs;
+#else
+  return 0;
+#endif
 }
 
 void drawSpriteToContent(int x, int y, int w, int h, const uint16_t* buffer, uint16_t transparentColor) {

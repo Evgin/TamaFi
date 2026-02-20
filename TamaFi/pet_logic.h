@@ -72,6 +72,8 @@ enum PetCommand {
     PET_CMD_NONE = 0,
     PET_CMD_RESET,         // reset stats, keep age/stage/traits
     PET_CMD_RESET_FULL,    // full reset: stats + age + stage + re-randomize traits
+    PET_CMD_FEED,          // manual feed: ACT_HUNT + PET_EVT_WIFI_REQUEST
+    PET_CMD_MEDICINE,      // +5% health (of max 100)
 };
 
 // ============ Events (pet -> orchestrator) ============

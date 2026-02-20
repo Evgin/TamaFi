@@ -48,3 +48,9 @@ void navHandleInput(InputButton event, PetState &petState);
 
 // Set current screen programmatically (e.g. from event handler on PET_EVT_DEATH).
 void navSetScreen(Screen screen);
+
+// Push current screen to stack and navigate to newScreen. OK on newScreen will call navGoBack().
+void navPushScreen(Screen newScreen);
+
+// Pop stack and return to previous screen. Used for OK on STATUS/SYSINFO.
+void navGoBack();

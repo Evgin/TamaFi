@@ -1,12 +1,15 @@
 #include <Arduino.h>
 #include <pgmspace.h>
 #define U8G2_FONT_SUPPORT
+#include "device_config.h"
 #include "ui.h"
+#include "ui_common.h"
+#include "ui_menu.h"
+#include "ui_info.h"
 #include "ui_anim.h"
 #include "sound.h"              // sndHatch (hatch animation)
 #include "wifi_service.h"       // wifiStats, wifiList, wifiScanInProgress
 #include "battery.h"            // batteryGetInfo
-// Полное определение Arduino_GFX нужно для вызовов getContentCanvas()->...
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 
@@ -71,6 +74,16 @@ static void copyProgmemToEffect(const uint16_t* src) {
     for (size_t i = 0; i < EFFECT_BUF_SIZE; i++) effectBuffer[i] = pgm_read_word(src + i);
 }
 
+#if UI_DRAW_DEBUG
+static void drawGameBackground(int x, int y, int w, int h, const uint16_t* bitmap, int stride) {
+    draw16bitBitmapToContentProgmem(x, y, w, h, bitmap, stride);
+}
+#else
+static void drawGameBackground(int x, int y, int w, int h, const uint16_t* /*bitmap*/, int /*stride*/) {
+    getContentCanvas()->fillRect(x, y, w, h, 0x03E0);  // RGB565 dark green (grass)
+}
+#endif
+
 // Local UI state
 static int idleFrameUi = 0;
 static unsigned long lastIdleFrameUi = 0;
@@ -83,39 +96,6 @@ static unsigned long lastHatchFrameUi = 0;
 
 static int deadFrameUi = 0;
 static unsigned long lastDeadFrameUi = 0;
-
-// Highlight animation states (init = row 0)
-static int menuHighlightY        = 28;
-static int menuHighlightTargetY  = 28;
-static unsigned long lastMenuAnimTime = 0;
-
-static int setHighlightY         = 28;
-static int setHighlightTargetY   = 28;
-static unsigned long lastSetAnim = 0;
-
-static const int MAIN_MENU_COUNT = 4;
-
-// Единый стиль меню (на основе настроек)
-static const int MENU_BASE_Y   = 45;
-static const int MENU_STEP     = 18;
-static const int MENU_FONT_H   = 13;   // 6x13
-static const int MENU_HL_H     = 18;   // высота подсветки
-
-// Y координата текста строки (привязано к setCursor)
-static int menuRowTextY(int rowIndex) {
-    return MENU_BASE_Y + rowIndex * MENU_STEP - 4;
-}
-
-// Y подсветки — верхняя граница совпадает с верхней границей текста
-static int calcHighlightY(int rowIndex) {
-    return menuRowTextY(rowIndex) - MENU_FONT_H;
-}
-
-// Универсальный рендер списка меню — объявление, определение после drawHeader/animateSelector
-typedef const char* (*MenuGetValueFn)(int index);
-static void drawMenuList(const char* title, const char* items[], int count, int selectedIndex,
-                         int& highlightY, int& highlightTargetY, unsigned long& lastAnimTime,
-                         MenuGetValueFn getValue = nullptr);
 
 static const char* moodTextLocal(Mood m) {
     switch (m) {
@@ -149,107 +129,10 @@ static const char* activityTextLocal(Activity a) {
     }
 }
 
-static void drawBatteryIndicator() {
-    const BatteryInfo &bat = batteryGetInfo();
-    if (!bat.available || !bat.batteryConnected) return;
-
-    int pct = constrain(bat.percent, 0, 100);
-
-    // Color by level
-    uint16_t color;
-    if (pct > 50)      color = TFT_GREEN;
-    else if (pct > 20) color = TFT_YELLOW;
-    else                color = TFT_RED;
-
-    // Battery icon: body 12x7 + tip 2x3
-    int bx = 202, by = 5, bw = 12, bh = 7;
-
-    getContentCanvas()->drawRect(bx, by, bw, bh, TFT_WHITE);           // body outline
-    getContentCanvas()->fillRect(bx + bw, by + 2, 2, 3, TFT_WHITE);    // tip
-
-    int fillW = (bw - 2) * pct / 100;
-    if (fillW > 0) {
-        getContentCanvas()->fillRect(bx + 1, by + 1, fillW, bh - 2, color);
-    }
-
-    // Percent text left of icon
-    char buf[5];
-    snprintf(buf, sizeof(buf), "%d%%", pct);
-    int textW = strlen(buf) * 6;   // 6px per char at default font
-    getContentCanvas()->setTextColor(bat.charging ? TFT_CYAN : TFT_WHITE);
-    getContentCanvas()->setCursor(bx - textW - 2, by);
-    getContentCanvas()->print(buf);
-}
-
-static void drawHeader(const char* title) {
-    getContentCanvas()->fillRect(0, 0, TFT_W, 18, TFT_BLACK);
-    getContentCanvas()->drawLine(0, 18, TFT_W, 18, TFT_CYAN);
-    getContentCanvas()->drawLine(0, 19, TFT_W, 19, TFT_MAGENTA);
-
-    getContentCanvas()->fillRect(25, 6, 6, 6, TFT_WHITE);
-    getContentCanvas()->fillRect(26, 7, 4, 4, TFT_BLACK);
-
-    getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
-    getContentCanvas()->setTextColor(TFT_WHITE);
-    getContentCanvas()->setCursor(38, 12);  // +7px down for 6x13 font
-    getContentCanvas()->print(title);
-    getContentCanvas()->setFont();  // reset to default 5x7
-
-    drawBatteryIndicator();
-}
-
 static void drawBar(int x, int y, int w, int h, int value, uint16_t color) {
     getContentCanvas()->drawRect(x, y, w, h, TFT_WHITE);
     int fillWidth = (w - 2) * value / 100;
     getContentCanvas()->fillRect(x + 1, y + 1, fillWidth, h - 2, color);
-}
-
-static void animateSelector(int &pos, int &target, unsigned long &lastTick) {
-    (void)lastTick;
-    pos = target;
-}
-
-static void drawMenuList(const char* title,
-                         const char* items[],
-                         int count,
-                         int selectedIndex,
-                         int& highlightY,
-                         int& highlightTargetY,
-                         unsigned long& lastAnimTime,
-                         MenuGetValueFn getValue)
-{
-    getContentCanvas()->fillScreen(TFT_BLACK);
-    drawHeader(title);
-    getContentCanvas()->setTextSize(1);
-
-    animateSelector(highlightY, highlightTargetY, lastAnimTime);
-    getContentCanvas()->fillRect(8, highlightY, 224, MENU_HL_H, TFT_DARKGREY);
-    getContentCanvas()->drawRect(8, highlightY, 224, MENU_HL_H, TFT_CYAN);
-
-    getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
-    for (int i = 0; i < count; i++) {
-        int textY = menuRowTextY(i);
-        bool sel = (i == selectedIndex);
-
-        getContentCanvas()->setCursor(14, textY);
-        getContentCanvas()->setTextColor(sel ? TFT_YELLOW : TFT_WHITE);
-        getContentCanvas()->print("> ");
-
-        getContentCanvas()->setCursor(30, textY);
-        getContentCanvas()->setTextColor(sel ? TFT_YELLOW : TFT_WHITE);
-        getContentCanvas()->print(items[i]);
-
-        if (getValue) {
-            const char* val = getValue(i);
-            if (val) {
-                getContentCanvas()->setCursor(150, textY);
-                getContentCanvas()->setTextColor(TFT_CYAN);
-                getContentCanvas()->print(val);
-            }
-        }
-    }
-    getContentCanvas()->setFont();
-    flushContentAndDrawControlBar();
 }
 
 static const uint16_t** currentIdleSet() {
@@ -288,7 +171,7 @@ static void screenHatch() {
     getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Вылупление...");
 
-    draw16bitBitmapToContentProgmem(0, 18, TFT_W, TFT_H - 18, backgroundImage2, 240);
+    drawGameBackground(0, 18, TFT_W, TFT_H - 18, backgroundImage2, 240);
     unsigned long now = millis();
 
     // 1) Idle egg animation until OK pressed
@@ -298,8 +181,10 @@ static void screenHatch() {
             eggIdleFrameUi = (eggIdleFrameUi + 1) % 4;
         }
 
+#if UI_DRAW_DEBUG
         copyProgmemToPet(EGG_IDLE_FRAMES[eggIdleFrameUi]);
         drawSpriteToContent(70, 80, PET_W, PET_H, petBuffer, TFT_WHITE);
+#endif
 
         flushContentAndDrawControlBar();
         return;
@@ -324,8 +209,10 @@ static void screenHatch() {
             }
         }
 
+#if UI_DRAW_DEBUG
         copyProgmemToPet(EGG_FRAMES[hatchFrameUi]);
         drawSpriteToContent(70, 80, PET_W, PET_H, petBuffer, TFT_WHITE);
+#endif
 
         flushContentAndDrawControlBar();
         return;
@@ -366,7 +253,7 @@ static void screenHome() {
     else
         drawHeader("Отдыхает");
 
-    draw16bitBitmapToContentProgmem(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
+    drawGameBackground(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
 
     unsigned long now = millis();
 
@@ -387,8 +274,10 @@ static void screenHome() {
             frameIdx = constrain(petState.restFrameIndex, 0, 4);
         }
 
+#if UI_DRAW_DEBUG
         copyProgmemToPet(EGG_FRAMES[frameIdx]);
         drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+#endif
 
         drawStatsBlock();
 
@@ -406,8 +295,10 @@ static void screenHome() {
             huntFrame = (huntFrame + 1) % 3;
         }
 
+#if UI_DRAW_DEBUG
         copyProgmemToPet(ATTACK_FRAMES[huntFrame]);
         drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+#endif
 
         drawStatsBlock();
 
@@ -427,9 +318,11 @@ static void screenHome() {
         idleFrameUi = (idleFrameUi + 1) % 4;
     }
 
+#if UI_DRAW_DEBUG
     const uint16_t** idleSet = currentIdleSet();
     copyProgmemToPet(idleSet[idleFrameUi]);
     drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+#endif
 
     // =============================
     //         ALWAYS DRAW STATS
@@ -439,23 +332,16 @@ static void screenHome() {
     // =============================
     //     HUNGER EFFECT OVERLAY
     // =============================
+#if UI_DRAW_DEBUG
     if (petState.hungerEffectActive) {
         copyProgmemToEffect(HUNGER_FRAMES[petState.hungerEffectFrame]);
         drawSpriteToContent(120, 90, EFFECT_W, EFFECT_H, effectBuffer, TFT_WHITE);
     }
+#endif
 
     flushContentAndDrawControlBar();
 }
 
-
-// ---------------------------------------------------------------------------
-// MAIN MENU
-// ---------------------------------------------------------------------------
-static void screenMenu(int mainMenuIndex) {
-    const char* items[] = { "Статус", "Система", "Настройки", "Назад" };
-    drawMenuList("Меню", items, MAIN_MENU_COUNT, mainMenuIndex,
-                 menuHighlightY, menuHighlightTargetY, lastMenuAnimTime, nullptr);
-}
 
 // ---------------------------------------------------------------------------
 // PET STATUS
@@ -463,44 +349,31 @@ static void screenMenu(int mainMenuIndex) {
 static void screenPetStatus() {
     getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Статус питомца");
-
     getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
-    getContentCanvas()->setTextColor(TFT_WHITE);
 
-    getContentCanvas()->setCursor(10, 26);
-    getContentCanvas()->print("Стадия: ");  getContentCanvas()->print(stageTextLocal(petState.stage));
+    static char buf[32];
+    snprintf(buf, sizeof(buf), "%dд %dч %dм",
+             (int)petState.pet.ageDays, (int)petState.pet.ageHours, (int)petState.pet.ageMinutes);
 
-    getContentCanvas()->setCursor(10, 40);
-    getContentCanvas()->print("Возраст: ");
-    getContentCanvas()->print(petState.pet.ageDays);    getContentCanvas()->print("д ");
-    getContentCanvas()->print(petState.pet.ageHours);   getContentCanvas()->print("ч ");
-    getContentCanvas()->print(petState.pet.ageMinutes); getContentCanvas()->print("м");
+    int y = INFO_START_Y;
+    y = drawInfoRow(y, "Стадия: ", stageTextLocal(petState.stage));
+    y = drawInfoRow(y, "Возраст: ", buf);
+    snprintf(buf, sizeof(buf), "%d%%", petState.pet.hunger);
+    y = drawInfoRow(y, "Голод:    ", buf);
+    snprintf(buf, sizeof(buf), "%d%%", petState.pet.happiness);
+    y = drawInfoRow(y, "Счастье:  ", buf);
+    snprintf(buf, sizeof(buf), "%d%%", petState.pet.health);
+    y = drawInfoRow(y, "Здоровье: ", buf);
+    y = drawInfoRow(y, "Настр.: ", moodTextLocal(petState.mood));
+    y = drawInfoRow(y, "Характер:", nullptr);
+    snprintf(buf, sizeof(buf), "%d", (int)petState.traitCuriosity);
+    y = drawInfoRow(y, "Любопытство: ", buf, TFT_WHITE, INFO_INDENT);
+    snprintf(buf, sizeof(buf), "%d", (int)petState.traitActivity);
+    y = drawInfoRow(y, "Активность:  ", buf);
+    snprintf(buf, sizeof(buf), "%d", (int)petState.traitStress);
+    drawInfoRow(y, "Стресс:      ", buf);
 
-    getContentCanvas()->setCursor(10, 58);
-    getContentCanvas()->print("Голод:    "); getContentCanvas()->print(petState.pet.hunger); getContentCanvas()->print("%");
-
-    getContentCanvas()->setCursor(10, 72);
-    getContentCanvas()->print("Счастье:  "); getContentCanvas()->print(petState.pet.happiness); getContentCanvas()->print("%");
-
-    getContentCanvas()->setCursor(10, 86);
-    getContentCanvas()->print("Здоровье: "); getContentCanvas()->print(petState.pet.health); getContentCanvas()->print("%");
-
-    getContentCanvas()->setCursor(10, 104);
-    getContentCanvas()->print("Настр.: "); getContentCanvas()->print(moodTextLocal(petState.mood));
-
-    getContentCanvas()->setCursor(10, 122);
-    getContentCanvas()->print("Характер:");
-
-    getContentCanvas()->setCursor(16, 136);
-    getContentCanvas()->print("Любопытство: "); getContentCanvas()->print((int)petState.traitCuriosity);
-
-    getContentCanvas()->setCursor(16, 150);
-    getContentCanvas()->print("Активность:  "); getContentCanvas()->print((int)petState.traitActivity);
-
-    getContentCanvas()->setCursor(16, 164);
-    getContentCanvas()->print("Стресс:      "); getContentCanvas()->print((int)petState.traitStress);
     getContentCanvas()->setFont();
-
     flushContentAndDrawControlBar();
 }
 
@@ -510,129 +383,54 @@ static void screenPetStatus() {
 static void screenSysInfo() {
     getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("Система");
-
     getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
-    getContentCanvas()->setTextColor(TFT_WHITE);
 
-    getContentCanvas()->setCursor(10, 30);
-    getContentCanvas()->print("Прошивка: 2.0");
-
-    getContentCanvas()->setCursor(10, 44);
-    getContentCanvas()->print("MCU: ESP32-S3");
-
-    getContentCanvas()->setCursor(10, 58);
-    getContentCanvas()->print("Память: ");
-    getContentCanvas()->print(ESP.getFreeHeap() / 1024); getContentCanvas()->print(" КБ");
-
+    static char buf[32];
     unsigned long s = millis() / 1000;
     unsigned long m = s / 60;
     unsigned long h = m / 60;
     s %= 60; m %= 60;
+    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", h, m, s);
 
-    getContentCanvas()->setCursor(10, 72);
-    getContentCanvas()->print("Время: ");
-    getContentCanvas()->printf("%02lu:%02lu:%02lu", h, m, s);
+    int y = INFO_START_Y;
+    y = drawInfoRow(y, "Прошивка: ", "2.0");
+    y = drawInfoRow(y, "MCU: ", "ESP32-S3");
+    snprintf(buf, sizeof(buf), "%d КБ", ESP.getFreeHeap() / 1024);
+    y = drawInfoRow(y, "Память: ", buf);
+    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", h, m, s);
+    y = drawInfoRow(y, "Время: ", buf);
+    y = drawInfoRow(y, "WiFi: ", wifiScanInProgress ? "Скан..." : "Ожидание");
 
-    getContentCanvas()->setCursor(10, 90);
-    getContentCanvas()->print("WiFi: ");
-    getContentCanvas()->print(wifiScanInProgress ? "Скан..." : "Ожидание");
-
-    // --- Батарея ---
     const BatteryInfo &bat = batteryGetInfo();
+    y = drawInfoSectionHeader(y, "--- Батарея ---");
     if (bat.available) {
-        getContentCanvas()->setCursor(10, 112);
-        getContentCanvas()->setTextColor(TFT_CYAN);
-        getContentCanvas()->print("--- Батарея ---");
-
-        getContentCanvas()->setCursor(10, 126);
-        getContentCanvas()->setTextColor(TFT_WHITE);
         if (bat.batteryConnected) {
-            getContentCanvas()->print("Заряд: ");
-            getContentCanvas()->print(bat.percent);
-            getContentCanvas()->print("% (");
-            getContentCanvas()->print(bat.voltage);
-            getContentCanvas()->print(" мВ)");
+            snprintf(buf, sizeof(buf), "%d%% (%d мВ)", bat.percent, bat.voltage);
+            y = drawInfoRow(y, "Заряд: ", buf);
         } else {
-            getContentCanvas()->print("Батарея: нет");
+            y = drawInfoRow(y, "Батарея: ", "нет");
         }
-
-        getContentCanvas()->setCursor(10, 140);
-        getContentCanvas()->print("Зарядка: ");
-        getContentCanvas()->print(bat.charging ? "Да" : "Нет");
-
-        getContentCanvas()->setCursor(10, 154);
-        getContentCanvas()->print("USB: ");
-        getContentCanvas()->print(bat.usbConnected ? "Подключён" : "---");
+        y = drawInfoRow(y, "Зарядка: ", bat.charging ? "Да" : "Нет");
+        y = drawInfoRow(y, "USB: ", bat.usbConnected ? "Подключён" : "---");
     } else {
-        getContentCanvas()->setCursor(10, 112);
-        getContentCanvas()->setTextColor(TFT_DARKGREY);
-        getContentCanvas()->print("Батарея: нет PMIC");
+        drawInfoRow(y, "Батарея: ", "нет PMIC", TFT_DARKGREY);
+        y += INFO_STEP;
     }
 
-    // --- WiFi ---
-    int wifiY = bat.available ? 172 : 130;
-
-    getContentCanvas()->setCursor(10, wifiY);
-    getContentCanvas()->setTextColor(TFT_CYAN);
-    getContentCanvas()->print("--- WiFi ---");
-
-    getContentCanvas()->setTextColor(TFT_WHITE);
-
-    getContentCanvas()->setCursor(10, wifiY + 14);
-    getContentCanvas()->print("Сетей: "); getContentCanvas()->print(wifiStats.netCount);
-
-    getContentCanvas()->setCursor(10, wifiY + 28);
-    getContentCanvas()->print("Сильных: "); getContentCanvas()->print(wifiStats.strongCount);
-
-    getContentCanvas()->setCursor(120, wifiY + 14);
-    getContentCanvas()->print("Откр: "); getContentCanvas()->print(wifiStats.openCount);
-
-    getContentCanvas()->setCursor(120, wifiY + 28);
-    getContentCanvas()->print("WPA: "); getContentCanvas()->print(wifiStats.wpaCount);
-
-    getContentCanvas()->setCursor(10, wifiY + 42);
-    getContentCanvas()->print("Скрытых: "); getContentCanvas()->print(wifiStats.hiddenCount);
-
-    getContentCanvas()->setCursor(120, wifiY + 42);
-    getContentCanvas()->print("RSSI: "); getContentCanvas()->print(wifiStats.avgRSSI);
+    y = drawInfoSectionHeader(y, "--- WiFi ---");
+    static char buf2[16];
+    snprintf(buf, sizeof(buf), "%d", wifiStats.netCount);
+    snprintf(buf2, sizeof(buf2), "%d", wifiStats.openCount);
+    y = drawInfoRow2Col(y, "Сетей: ", buf, "Откр: ", buf2);
+    snprintf(buf, sizeof(buf), "%d", wifiStats.strongCount);
+    snprintf(buf2, sizeof(buf2), "%d", wifiStats.wpaCount);
+    y = drawInfoRow2Col(y, "Сильных: ", buf, "WPA: ", buf2);
+    snprintf(buf, sizeof(buf), "%d", wifiStats.hiddenCount);
+    snprintf(buf2, sizeof(buf2), "%d", wifiStats.avgRSSI);
+    drawInfoRow2Col(y, "Скрытых: ", buf, "RSSI: ", buf2);
 
     getContentCanvas()->setFont();
-
     flushContentAndDrawControlBar();
-}
-
-// ---------------------------------------------------------------------------
-// SETTINGS MENU
-// ---------------------------------------------------------------------------
-static const char* petSkinText(uint8_t skin) {
-    switch (skin) {
-        case 0: return "Golem";
-        case 1: return "Dragon";
-        case 2: return "Robot";
-        case 3: return "Other";
-    }
-    return "?";
-}
-
-static const char* settingsGetValue(int index) {
-    static char buf[12];
-    switch (index) {
-        case 0: return tftBrightnessIndex==0?"Низ":tftBrightnessIndex==1?"Сред":"Выс";
-        case 1: return soundVolume==0?"Выкл":soundVolume==1?"1":soundVolume==2?"2":"3";
-        case 2: return petSkinText(petSkin);
-        case 3: return autoSleepMs==0?"Выкл":autoSleepMs==30000?"30с":autoSleepMs==60000?"60с":"120с";
-        case 4: snprintf(buf, sizeof(buf), "%luс", (unsigned long)(autoSaveMs/1000)); return buf;
-        default: return nullptr;
-    }
-}
-
-static void screenSettings(int settingsMenuIndex) {
-    const char* labels[] = {
-        "Яркость", "Звук", "Скин", "Авто сон", "Авто сохр.",
-        "Сброс питомца", "Сброс всего", "Назад"
-    };
-    drawMenuList("Настройки", labels, 8, settingsMenuIndex,
-                 setHighlightY, setHighlightTargetY, lastSetAnim, settingsGetValue);
 }
 
 // ---------------------------------------------------------------------------
@@ -649,10 +447,12 @@ static void screenGameOver() {
         if (deadFrameUi > 2) deadFrameUi = 2;
     }
 
-    draw16bitBitmapToContentProgmem(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
+    drawGameBackground(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
 
+#if UI_DRAW_DEBUG
     copyProgmemToPet(DEAD_FRAMES[deadFrameUi]);
     drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+#endif
 
     flushContentAndDrawControlBar();
 }
@@ -678,30 +478,22 @@ void uiInit() {
 }
 
 void uiOnScreenChange(Screen newScreen) {
-    if (newScreen == SCREEN_MENU) {
-        menuHighlightY = menuHighlightTargetY = calcHighlightY(mainMenuIndex);
-    }
-    if (newScreen == SCREEN_SETTINGS) {
-        setHighlightY  = setHighlightTargetY = calcHighlightY(settingsMenuIndex);
-    }
+    uiMenuOnScreenChange(newScreen);
     if (newScreen == SCREEN_HATCH) {
         eggIdleFrameUi = hatchFrameUi = 0;
     }
-
-    // Action strip only on HOME screen
-    setActionStripVisible(false);  // красная полоса отключена
+    setActionStripVisible(newScreen == SCREEN_HOME);
+    if (newScreen == SCREEN_HOME) {
+        actionStripSetSelected(0);
+    }
+    displayControlBarSetScreen((int)newScreen);
 }
 
 void uiDrawScreen(Screen screen,
                   int mainMenuIdx,
                   int settingsIdx)
 {
-    if (screen == SCREEN_MENU) {
-        menuHighlightTargetY = calcHighlightY(mainMenuIdx);
-    }
-    if (screen == SCREEN_SETTINGS) {
-        setHighlightTargetY = calcHighlightY(settingsMenuIndex);
-    }
+    uiMenuUpdateHighlightTarget(screen, mainMenuIdx, settingsIdx);
 
     switch (screen) {
         case SCREEN_BOOT:        screenBoot(); break;

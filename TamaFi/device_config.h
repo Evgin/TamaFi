@@ -16,6 +16,9 @@
 #define CONTENT_H   368   // content area height (square 368x368)
 #define CONTROL_H   80    // bottom strip for virtual buttons / indicators
 #define ACTION_STRIP_H  50  // action strip overlay height (drawn over bottom of content)
+#define ACTION_STRIP_BTN_SIZE        40  // side of square for all buttons
+#define ACTION_STRIP_BTN_GAP          8  // gap between buttons
+#define ACTION_STRIP_RIGHT_PADDING    8  // padding from right edge of strip
 
 // Logical content size (game renders at this resolution, then scaled to CONTENT_H x CONTENT_H)
 #define CONTENT_LOGICAL_W  240
@@ -49,3 +52,7 @@
 
 // ---------- Display brightness ----------
 // Controlled via gfx->Display_Brightness(0..255), no separate PWM pin
+
+// ---------- UI feature flags ----------
+#define UI_DRAW_DEBUG  1   // 1 = draw bg + pet + animations, 0 = skip (solid bg only, for FPS testing)
+#define UI_DEBUG_TIMING 0  // 1 = print flush/loop ms with FPS (for bottleneck analysis)

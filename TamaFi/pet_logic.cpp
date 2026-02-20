@@ -300,7 +300,13 @@ static void decideNextActivity(PetState &s, unsigned long now) {
 
 // ============ Internal: process command queue ============
 
+#define FEED_COOLDOWN_MS 30000
+#define MEDICINE_COOLDOWN_MS 30000
+
 static void processCommands(PetState &s, unsigned long now) {
+    static unsigned long lastManualFeedTime = 0;
+    static unsigned long lastManualMedicineTime = 0;
+
     PetCommand cmd;
     while ((cmd = pollCommand(s)) != PET_CMD_NONE) {
         switch (cmd) {
@@ -309,6 +315,18 @@ static void processCommands(PetState &s, unsigned long now) {
                 break;
             case PET_CMD_RESET_FULL:
                 resetStats(s, true, now);
+                break;
+            case PET_CMD_FEED:
+                if (s.activity != ACT_NONE || s.restPhase != REST_NONE) break;
+                if (now - lastManualFeedTime < FEED_COOLDOWN_MS) break;
+                lastManualFeedTime = now;
+                s.activity = ACT_HUNT;
+                pushEvent(s, PET_EVT_WIFI_REQUEST);
+                break;
+            case PET_CMD_MEDICINE:
+                if (now - lastManualMedicineTime < MEDICINE_COOLDOWN_MS) break;
+                lastManualMedicineTime = now;
+                s.pet.health = constrain(s.pet.health + 5, 0, 100);  // +5% of max
                 break;
             default:
                 break;

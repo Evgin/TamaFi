@@ -4,6 +4,7 @@
 
 // Forward declare so we don't need GFX includes in every consumer
 class Arduino_GFX;
+struct PetState;
 
 // Init display (QSPI + canvas). Call once from setup().
 void displayAmoledInit();
@@ -28,8 +29,19 @@ void setIndicatorState(IndicatorState s);
 // Show/hide the action strip overlay (only visible on HOME screen).
 void setActionStripVisible(bool visible);
 
+// Action strip selection (-1 = none, 0..n-1 = button index)
+void actionStripSetSelected(int index);
+int actionStripGetSelected();
+void actionStripMoveSelection(int delta);  // -1 left, +1 right
+void actionStripInvokeSelected(PetState* petState);
+
+// Redraw control bar icons for current screen. HOME = left/right, menu screens = up/down.
+void displayControlBarSetScreen(int screen);
+
 // Scale content 240x240 -> (0,0)-(368,368), then draw control bar (0,368)-(368,448).
 void flushContentAndDrawControlBar();
+// Last flush duration in ms (when UI_DEBUG_TIMING). 0 if not measured.
+unsigned long getLastFlushMs();
 
 // Draw sprite with transparency onto content canvas (replacement for pushToSprite).
 void drawSpriteToContent(int x, int y, int w, int h, const uint16_t* buffer, uint16_t transparentColor);

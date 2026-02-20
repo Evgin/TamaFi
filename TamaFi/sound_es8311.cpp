@@ -13,7 +13,7 @@
 
 #define I2S_SAMPLE_RATE  16000
 #define I2S_NUM_CH       2
-#define TONE_BUF_SAMPLES 1024    // больше буфер — меньше прерываний при занятом loop()
+#define TONE_BUF_SAMPLES 128     // меньше буфер — меньше блокировка i2s.write() на кадр
 static int toneAmplitude = 2500; // программная амплитуда (управляется через soundSetVolume)
 
 static I2SClass i2s;

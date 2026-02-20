@@ -10,6 +10,10 @@ void uiOnScreenChange(Screen newScreen);
 
 Screen   currentScreen       = SCREEN_BOOT;
 
+#define SCREEN_STACK_SIZE 8
+static Screen   screenStack[SCREEN_STACK_SIZE];
+static int      screenStackDepth = 0;
+
 bool     hasHatchedOnce      = false;
 bool     hatchTriggered      = false;
 
@@ -34,6 +38,7 @@ static void applyTftBrightness() {
 
 void navInit() {
     currentScreen      = SCREEN_BOOT;
+    screenStackDepth   = 0;
     mainMenuIndex      = 0;
     settingsMenuIndex  = 0;
     applyTftBrightness();
@@ -42,6 +47,23 @@ void navInit() {
 void navSetScreen(Screen screen) {
     currentScreen = screen;
     uiOnScreenChange(currentScreen);
+}
+
+void navPushScreen(Screen newScreen) {
+    if (screenStackDepth < SCREEN_STACK_SIZE) {
+        screenStack[screenStackDepth++] = currentScreen;
+    }
+    currentScreen = newScreen;
+    uiOnScreenChange(currentScreen);
+}
+
+void navGoBack() {
+    if (screenStackDepth > 0) {
+        currentScreen = screenStack[--screenStackDepth];
+        uiOnScreenChange(currentScreen);
+    } else {
+        navSetScreen(SCREEN_MENU);  // fallback
+    }
 }
 
 void navHandleInput(InputButton e, PetState &petState) {
@@ -60,14 +82,14 @@ void navHandleInput(InputButton e, PetState &petState) {
 
     // ===== QUICK-ACCESS from HOME (R1) =====
     if (currentScreen == SCREEN_HOME) {
-        if (r1) { sndClick(); navSetScreen(SCREEN_PET_STATUS); return; }
+        if (r1) { sndClick(); navPushScreen(SCREEN_PET_STATUS); return; }
     }
 
-    // ===== RETURN from quick-access pages =====
+    // ===== RETURN from quick-access pages (R1 = back) =====
     if (currentScreen == SCREEN_PET_STATUS) {
         if (r1) {
             sndClick();
-            navSetScreen(SCREEN_HOME);
+            navGoBack();
             return;
         }
     }
@@ -90,12 +112,24 @@ void navHandleInput(InputButton e, PetState &petState) {
         return;
     }
 
-    // ===== HOME (OK -> menu) =====
+    // ===== HOME (action strip + OK -> menu or invoke) =====
     if (currentScreen == SCREEN_HOME) {
+        if (up) {
+            sndClick();
+            actionStripMoveSelection(-1);
+        }
+        if (down) {
+            sndClick();
+            actionStripMoveSelection(1);
+        }
         if (ok) {
             sndClick();
-            mainMenuIndex = 0;
-            navSetScreen(SCREEN_MENU);
+            if (actionStripGetSelected() >= 0) {
+                actionStripInvokeSelected(&petState);
+            } else {
+                mainMenuIndex = 0;
+                navSetScreen(SCREEN_MENU);
+            }
         }
         return;
     }
@@ -107,8 +141,8 @@ void navHandleInput(InputButton e, PetState &petState) {
         if (ok) {
             sndClick();
             switch (mainMenuIndex) {
-                case 0: navSetScreen(SCREEN_PET_STATUS); break;
-                case 1: navSetScreen(SCREEN_SYSINFO);    break;
+                case 0: navPushScreen(SCREEN_PET_STATUS); break;
+                case 1: navPushScreen(SCREEN_SYSINFO);    break;
                 case 2: navSetScreen(SCREEN_SETTINGS);   break;
                 case 3: navSetScreen(SCREEN_HOME);       break;
             }
@@ -116,12 +150,12 @@ void navHandleInput(InputButton e, PetState &petState) {
         return;
     }
 
-    // ===== Simple OK-back pages =====
+    // ===== Simple OK-back pages (return to previous screen from stack) =====
     if (currentScreen == SCREEN_PET_STATUS ||
         currentScreen == SCREEN_SYSINFO) {
         if (ok) {
             sndClick();
-            navSetScreen(SCREEN_MENU);
+            navGoBack();
         }
         return;
     }

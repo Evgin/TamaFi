@@ -15,6 +15,7 @@
 #include "persistence.h"
 #include "navigation.h"
 #include "input.h"
+#include "device_config.h"
 #include "display_amoled.h"
 #include "ui.h"
 #include "battery.h"
@@ -31,6 +32,15 @@ PetState petState;
 static unsigned long lastLogicTick    = 0;
 static unsigned long lastSaveTime     = 0;
 static unsigned long lastBatteryPoll  = 0;
+static unsigned long lastFpsTime      = 0;
+static unsigned int  fpsFrameCount    = 0;
+#if UI_DEBUG_TIMING
+static unsigned long lastPreDrawMs    = 0;
+static unsigned long lastDrawMs       = 0;
+static unsigned long lastSoundMs      = 0;
+static unsigned long lastInputMs      = 0;
+static unsigned long lastOtherMs      = 0;
+#endif
 
 // ============ Event mapping: PetEvent -> sound / indicators ============
 
@@ -139,14 +149,29 @@ void setup() {
 
 void loop() {
     unsigned long now = millis();
+#if UI_DEBUG_TIMING
+    unsigned long loopStart = now;
+#endif
 
     // 1. Sound: feed I2S buffer + advance sequencer
-    for (int i = 0; i < 4 && soundFeed(); i++) {}
+#if UI_DEBUG_TIMING
+    unsigned long t0 = millis();
+#endif
+    for (int i = 0; i < 2 && soundFeed(); i++) {}  // 2 вызова — меньше блокировки, i2s.write() блокирующий
     sndUpdate();
     stopBuzzerIfNeeded();
+#if UI_DEBUG_TIMING
+    lastSoundMs = millis() - t0;
+#endif
 
     // 2. Input: poll touch/buttons
+#if UI_DEBUG_TIMING
+    t0 = millis();
+#endif
     inputPoll();
+#if UI_DEBUG_TIMING
+    lastInputMs = millis() - t0;
+#endif
     InputButton event = inputConsumeEvent();
 
     // 3. AutoSleep: BOOT toggles sleep; touch ignored while asleep; idle timeout
@@ -212,6 +237,32 @@ void loop() {
 
     // 10. Draw UI (skip when display is asleep — save CPU)
     if (!displayIsAsleep()) {
+#if UI_DEBUG_TIMING
+        unsigned long tBeforeDraw = millis();
+#endif
         uiDrawScreen(currentScreen, mainMenuIndex, settingsMenuIndex);
+#if UI_DEBUG_TIMING
+        unsigned long tAfterDraw = millis();
+        lastPreDrawMs = tBeforeDraw - loopStart;
+        lastDrawMs = tAfterDraw - tBeforeDraw;
+        fpsFrameCount++;
+        if (lastFpsTime == 0) {
+            lastFpsTime = now;
+        } else if (now - lastFpsTime >= 1000) {
+            float fps = 1000.0f * fpsFrameCount / (now - lastFpsTime);
+            float avgFrameMs = (float)(now - lastFpsTime) / fpsFrameCount;
+            lastOtherMs = (lastSoundMs + lastInputMs <= lastPreDrawMs) ? (lastPreDrawMs - lastSoundMs - lastInputMs) : 0;
+            DBG("[FPS] " + String(fps, 1) + " | sound=" + String(lastSoundMs) + "ms | input=" + String(lastInputMs) + "ms | other=" + String(lastOtherMs) + "ms | draw=" + String(lastDrawMs) + "ms | flush=" + String(getLastFlushMs()) + "ms | frame=" + String(avgFrameMs, 0) + "ms");
+            fpsFrameCount = 0;
+            lastFpsTime = now;
+        }
+#endif
+    } else {
+#if UI_DEBUG_TIMING
+        if (lastFpsTime > 0 && now - lastFpsTime >= 1000) {
+            lastFpsTime = 0;
+            fpsFrameCount = 0;
+        }
+#endif
     }
 }
