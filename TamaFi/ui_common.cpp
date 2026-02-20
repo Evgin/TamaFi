@@ -2,12 +2,29 @@
 #include "ui_common.h"
 #include "display_amoled.h"
 #include "battery.h"
+#include "time_service.h"
 #include "device_config.h"
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 
 static const int TFT_W = CONTENT_LOGICAL_W;
 static const int TFT_H = CONTENT_LOGICAL_H;
+
+static void drawTimeInHeader() {
+    struct tm t;
+    char buf[8];
+    if (timeServiceGetRealTime(&t)) {
+        snprintf(buf, sizeof(buf), "%02d:%02d", t.tm_hour, t.tm_min);
+    } else {
+        snprintf(buf, sizeof(buf), "--:--");
+    }
+    auto* c = getContentCanvas();
+    c->setTextColor(TFT_WHITE);
+    int textW = strlen(buf) * 6;  // 6px per char
+    int centerX = (TFT_W - textW) / 2;
+    c->setCursor(centerX, 5);
+    c->print(buf);
+}
 
 static void drawBatteryIndicator() {
     const BatteryInfo& bat = batteryGetInfo();
@@ -48,6 +65,7 @@ void drawHeader(const char* title) {
     c->print(title);
     c->setFont();
 
+    drawTimeInHeader();
     drawBatteryIndicator();
 }
 

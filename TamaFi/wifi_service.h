@@ -6,6 +6,15 @@
 // Initialize WiFi in STA mode.
 void wifiInit();
 
+// Connect to WiFi using WIFI_SSID / WIFI_PASSWORD from device_config. Non-blocking.
+void wifiConnect();
+
+// Returns true if connected to WiFi.
+bool wifiConnected();
+
+// Start NTP sync and write result to RTC. Call only when wifiConnected().
+void wifiStartNtpSync();
+
 // Start async WiFi scan.
 void wifiStartScan();
 

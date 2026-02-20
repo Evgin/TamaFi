@@ -22,8 +22,10 @@ static bool actionStripNeedsRedraw = true;   // true = draw strip area; false = 
 
 typedef void (*ActionStripCallback)(PetState*);
 
+enum ActionStripIcon { ICON_MENU, ICON_FORK, ICON_CROSS };
+
 struct ActionStripButton {
-    char label;
+    ActionStripIcon icon;
     ActionStripCallback onSelect;
 };
 
@@ -35,15 +37,16 @@ static void medicineCallback(PetState* state) {
     if (state) petSendCommand(*state, PET_CMD_MEDICINE);
 }
 
-static void statusCallback(PetState* state) {
+static void menuCallback(PetState* state) {
     (void)state;
-    navPushScreen(SCREEN_PET_STATUS);
+    mainMenuIndex = 0;
+    navSetScreen(SCREEN_MENU);
 }
 
 static ActionStripButton actionStripButtons[] = {
-    { 'S', statusCallback },
-    { 'F', feedCallback },
-    { 'M', medicineCallback },
+    { ICON_MENU, menuCallback },
+    { ICON_FORK, feedCallback },
+    { ICON_CROSS, medicineCallback },
 };
 static const int actionStripButtonCount = sizeof(actionStripButtons) / sizeof(actionStripButtons[0]);
 
@@ -254,9 +257,6 @@ static void drawActionStripIcons() {
   const int n           = actionStripButtonCount;
   const int btnY        = stripStartY + (ACTION_STRIP_H - ACTION_STRIP_BTN_SIZE) / 2;
 
-  gfx->setUTF8Print(true);
-  gfx->setTextColor(TFT_WHITE);
-
   for (int i = 0; i < n; i++) {
     int x = stripX + stripW - ACTION_STRIP_RIGHT_PADDING
           - (n - i) * ACTION_STRIP_BTN_SIZE
@@ -271,16 +271,28 @@ static void drawActionStripIcons() {
     }
     gfx->fillRect(x, btnY, ACTION_STRIP_BTN_SIZE, ACTION_STRIP_BTN_SIZE, TFT_DARKGREY);
 
-    // Label: u8g2_font_10x20_tf (~10x20 px)
-    gfx->setFont(u8g2_font_10x20_tf);
-    const int charW = 10, charH = 20;
-    int cx = x + (ACTION_STRIP_BTN_SIZE - charW) / 2;
-    int cy = btnY + (ACTION_STRIP_BTN_SIZE - charH) / 2 + charH - 1;  // baseline
-    gfx->setCursor(cx, cy);
-    gfx->print(actionStripButtons[i].label);
+    // Icon: geometric primitives (U8g2_for_Adafruit_GFX conflicts with Arduino_GFX)
+    const int cx = x + ACTION_STRIP_BTN_SIZE / 2;
+    const int cy = btnY + ACTION_STRIP_BTN_SIZE / 2;
+    const uint16_t iconColor = TFT_WHITE;
+    switch (actionStripButtons[i].icon) {
+      case ICON_MENU:
+        gfx->fillRect(cx - 10, cy - 8, 20, 3, iconColor);
+        gfx->fillRect(cx - 10, cy - 1, 20, 3, iconColor);
+        gfx->fillRect(cx - 10, cy + 6, 20, 3, iconColor);
+        break;
+      case ICON_FORK:
+        gfx->fillRect(cx - 8, cy - 12, 2, 10, iconColor);
+        gfx->fillRect(cx - 2, cy - 12, 2, 10, iconColor);
+        gfx->fillRect(cx + 6, cy - 12, 2, 10, iconColor);
+        gfx->fillRect(cx - 3, cy - 2, 6, 14, iconColor);
+        break;
+      case ICON_CROSS:
+        gfx->fillRect(cx - 8, cy - 2, 16, 4, iconColor);
+        gfx->fillRect(cx - 2, cy - 10, 4, 20, iconColor);
+        break;
+    }
   }
-
-  gfx->setFont();
 }
 
 void flushContentAndDrawControlBar() {

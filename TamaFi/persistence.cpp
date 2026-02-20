@@ -1,9 +1,10 @@
 #include "persistence.h"
-#include "navigation.h"       // soundVolume, tftBrightnessIndex, hasHatchedOnce, petSkin
+#include "navigation.h"       // soundVolume, tftBrightnessIndex, hasHatchedOnce, petSkin, currentScreen
 #include "sound.h"            // soundSetVolume
 #include <Preferences.h>
 
 static Preferences prefs;
+static Screen savedScreen = SCREEN_BOOT;
 
 void persistenceInit() {
     prefs.begin("tamafi2", false);
@@ -31,6 +32,11 @@ void saveState(const PetState &pet) {
 
     prefs.putULong("sleepMs", autoSleepMs);
     prefs.putUShort("saveMs", (uint16_t)(autoSaveMs / 1000));  // сохраняем в секундах
+    prefs.putUChar("screen", (uint8_t)currentScreen);
+}
+
+Screen persistenceGetSavedScreen() {
+    return savedScreen;
 }
 
 void loadState(PetState &pet) {
@@ -72,4 +78,6 @@ void loadState(PetState &pet) {
     autoSleepMs        = prefs.getULong("sleepMs", 60000);
     uint16_t saveSec   = prefs.getUShort("saveMs", 30);
     autoSaveMs         = (uint16_t)(saveSec * 1000);
+
+    savedScreen        = (Screen)prefs.getUChar("screen", (uint8_t)SCREEN_BOOT);
 }

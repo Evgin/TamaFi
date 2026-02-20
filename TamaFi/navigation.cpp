@@ -41,6 +41,13 @@ void navInit() {
     screenStackDepth   = 0;
     mainMenuIndex      = 0;
     settingsMenuIndex  = 0;
+
+    if (hasHatchedOnce) {
+        Screen restored = persistenceGetSavedScreen();
+        if (restored != SCREEN_BOOT && restored != SCREEN_HATCH) {
+            currentScreen = restored;
+        }
+    }
     applyTftBrightness();
 }
 

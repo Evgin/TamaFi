@@ -50,6 +50,13 @@
 // ---------- Power Management (AXP2101 PMIC, I2C same bus as touch) ----------
 #define AXP2101_I2C_ADDR  0x34
 
+// ---------- RTC (PCF85063, I2C same bus) ----------
+#define PCF85063_I2C_ADDR 0x51
+
+// ---------- WiFi (credentials in code) ----------
+#define WIFI_SSID     "zyxelwlan"
+#define WIFI_PASSWORD "goncharov_network"
+
 // ---------- Display brightness ----------
 // Controlled via gfx->Display_Brightness(0..255), no separate PWM pin
 

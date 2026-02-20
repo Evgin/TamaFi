@@ -10,6 +10,7 @@
 #include "sound.h"              // sndHatch (hatch animation)
 #include "wifi_service.h"       // wifiStats, wifiList, wifiScanInProgress
 #include "battery.h"            // batteryGetInfo
+#include "time_service.h"      // timeServiceGetRealTime
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 
@@ -122,9 +123,10 @@ static const char* stageTextLocal(Stage s) {
 
 static const char* activityTextLocal(Activity a) {
     switch (a) {
-        case ACT_HUNT:     return "Охота на WiFi...";
-        case ACT_DISCOVER: return "Исследование...";
-        case ACT_REST:     return "Отдых...";
+        case ACT_NONE:     return "Отдых";
+        case ACT_HUNT:     return "Охота";
+        case ACT_DISCOVER: return "Поиск";
+        case ACT_REST:     return "Отдых";
         default:           return "";
     }
 }
@@ -248,10 +250,7 @@ static void screenHome() {
     getContentCanvas()->fillScreen(TFT_BLACK);
 
     // ===== TOP BAR MESSAGE =====
-    if (petState.activity != ACT_NONE)
-        drawHeader(activityTextLocal(petState.activity));
-    else
-        drawHeader("Отдыхает");
+    drawHeader(activityTextLocal(petState.activity));
 
     drawGameBackground(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
 
@@ -386,19 +385,24 @@ static void screenSysInfo() {
     getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
 
     static char buf[32];
-    unsigned long s = millis() / 1000;
-    unsigned long m = s / 60;
-    unsigned long h = m / 60;
-    s %= 60; m %= 60;
-    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", h, m, s);
-
     int y = INFO_START_Y;
     y = drawInfoRow(y, "Прошивка: ", "2.0");
     y = drawInfoRow(y, "MCU: ", "ESP32-S3");
     snprintf(buf, sizeof(buf), "%d КБ", ESP.getFreeHeap() / 1024);
     y = drawInfoRow(y, "Память: ", buf);
-    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", h, m, s);
+    struct tm t;
+    if (timeServiceGetRealTime(&t)) {
+        snprintf(buf, sizeof(buf), "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+    } else {
+        snprintf(buf, sizeof(buf), "--:--:--");
+    }
     y = drawInfoRow(y, "Время: ", buf);
+    unsigned long uptimeS = millis() / 1000;
+    unsigned long uh = uptimeS / 3600;
+    unsigned long um = (uptimeS % 3600) / 60;
+    unsigned long us = uptimeS % 60;
+    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", uh, um, us);
+    y = drawInfoRow(y, "Uptime: ", buf);
     y = drawInfoRow(y, "WiFi: ", wifiScanInProgress ? "Скан..." : "Ожидание");
 
     const BatteryInfo &bat = batteryGetInfo();

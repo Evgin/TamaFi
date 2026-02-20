@@ -1,5 +1,8 @@
 #include "wifi_service.h"
+#include "time_service.h"
+#include "device_config.h"
 #include <WiFi.h>
+#include <time.h>
 
 // --- State ---
 
@@ -9,11 +12,42 @@ int             wifiListCount      = 0;
 bool            wifiScanInProgress = false;
 unsigned long   lastWifiScanTime   = 0;
 
+// NTP: Moscow UTC+3, no DST
+#define NTP_GMT_OFFSET_SEC   (3 * 3600)
+#define NTP_DAYLIGHT_OFFSET  0
+#define NTP_SERVER1          "pool.ntp.org"
+#define NTP_SERVER2          "time.nist.gov"
+
 // ============ Public API ============
 
 void wifiInit() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect(true);
+}
+
+void wifiConnect() {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+}
+
+bool wifiConnected() {
+    return WiFi.status() == WL_CONNECTED;
+}
+
+void wifiStartNtpSync() {
+    if (!wifiConnected()) return;
+
+    configTime(NTP_GMT_OFFSET_SEC, NTP_DAYLIGHT_OFFSET, NTP_SERVER1, NTP_SERVER2);
+
+    // Wait for time sync (max 10 seconds)
+    for (int i = 0; i < 100; i++) {
+        time_t now = time(nullptr);
+        if (now > 1700000000) {  // reasonable date (2023+)
+            timeServiceSetFromSystem();
+            return;
+        }
+        delay(100);
+    }
 }
 
 void wifiStartScan() {

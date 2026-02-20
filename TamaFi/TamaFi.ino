@@ -12,11 +12,13 @@
 #include "pet_logic.h"
 #include "sound.h"
 #include "wifi_service.h"
+#include "time_service.h"
 #include "persistence.h"
 #include "navigation.h"
 #include "input.h"
 #include "device_config.h"
 #include "display_amoled.h"
+#include "device_sleep.h"
 #include "ui.h"
 #include "battery.h"
 
@@ -33,6 +35,8 @@ static unsigned long lastLogicTick    = 0;
 static unsigned long lastSaveTime     = 0;
 static unsigned long lastBatteryPoll  = 0;
 static unsigned long lastFpsTime      = 0;
+static unsigned long lastNtpSyncMs    = 0;
+static bool          ntpSyncDoneOnce  = false;
 static unsigned int  fpsFrameCount    = 0;
 #if UI_DEBUG_TIMING
 static unsigned long lastPreDrawMs    = 0;
@@ -111,6 +115,9 @@ void setup() {
     inputInit();
     DBG(inputTouchInited() ? "[input] FT3168 OK" : "[input] FT3168 init fail");
 
+    timeServiceInit();
+    DBG(timeServiceAvailable() ? "[time] RTC OK" : "[time] RTC not found");
+
     displayAmoledInit();
 
     if (soundInit()) {
@@ -120,6 +127,7 @@ void setup() {
     }
 
     wifiInit();
+    wifiConnect();
 
     // Battery / PMIC
     batteryInit();
@@ -174,30 +182,13 @@ void loop() {
 #endif
     InputButton event = inputConsumeEvent();
 
-    // 3. AutoSleep: BOOT toggles sleep; touch ignored while asleep; idle timeout
+    // 3. AutoSleep: Deep Sleep по таймауту или BOOT
     if (event == INPUT_BOOT) {
-        if (displayIsAsleep()) {
-            // Пробуждение по BOOT
-            displayWake(tftBrightnessIndex);
-            soundSetVolume(soundVolume);       // восстановить звук
-            inputResetActivity();
-        } else {
-            // Принудительный сон по BOOT
-            soundStopAll();
-            soundSetVolume(0);
-            displaySleep();
-        }
-        event = INPUT_NONE;   // BOOT не передаётся в навигацию
-    }
-    else if (displayIsAsleep()) {
-        // Во сне: игнорировать все события кроме BOOT (тач не будит)
+        deviceEnterSleep(petState);
         event = INPUT_NONE;
     }
     else if (autoSleepMs > 0 && (millis() - inputLastActiveMs() >= autoSleepMs)) {
-        // Таймаут бездействия -> сон
-        soundStopAll();
-        soundSetVolume(0);
-        displaySleep();
+        deviceEnterSleep(petState);
     }
 
     // 4. Navigation: handle input
@@ -215,27 +206,39 @@ void loop() {
         }
     }
 
-    // 6. Check WiFi scan completion -> inject into pet
+    // 6. NTP sync: at boot (first time connected) and every hour
+    if (wifiConnected()) {
+        if (!ntpSyncDoneOnce) {
+            wifiStartNtpSync();
+            ntpSyncDoneOnce = true;
+            lastNtpSyncMs = now;
+        } else if (now - lastNtpSyncMs >= 3600000) {  // 1 hour
+            wifiStartNtpSync();
+            lastNtpSyncMs = now;
+        }
+    }
+
+    // 7. Check WiFi scan completion -> inject into pet
     if (wifiCheckScanDone()) {
         petInjectWifiResult(petState, wifiStats, now);
     }
 
-    // 7. Process pet events -> sound / indicators
+    // 8. Process pet events -> sound / indicators
     processPetEvents();
 
-    // 8. Battery poll (~5 s)
+    // 9. Battery poll (~5 s)
     if (now - lastBatteryPoll >= 5000) {
         lastBatteryPoll = now;
         batteryUpdate();
     }
 
-    // 9. Autosave
+    // 10. Autosave
     if (now - lastSaveTime >= autoSaveMs) {
         lastSaveTime = now;
         saveState(petState);
     }
 
-    // 10. Draw UI (skip when display is asleep — save CPU)
+    // 11. Draw UI (skip when display is asleep — save CPU)
     if (!displayIsAsleep()) {
 #if UI_DEBUG_TIMING
         unsigned long tBeforeDraw = millis();
