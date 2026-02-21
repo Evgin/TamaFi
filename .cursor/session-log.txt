@@ -78,7 +78,7 @@
 ### Внесённые изменения
 - TamaFi/time_service.h, time_service.cpp: модуль времени (RTC PCF85063, getRealTime, setFromSystem)
 - TamaFi/device_config.h: PCF85063_I2C_ADDR 0x51, WIFI_SSID, WIFI_PASSWORD
-- TamaFi/wifi_service.cpp, wifi_service.h: wifiConnect(), wifiConnected(), wifiStartNtpSync()
+- TamaFi/wifi_service.cpp, wifi_service.h: wifiConnect(), wifiConnected(), wifi NtpSync()
 - TamaFi/ui_common.cpp: drawTimeInHeader() — HH:mm в центре шапки
 - TamaFi/ui.cpp: экран «Система» — Время (реальное), Uptime (millis)
 - TamaFi/TamaFi.ino: timeServiceInit(), wifiConnect(), NTP sync в loop (boot + раз в час)

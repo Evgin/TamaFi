@@ -72,18 +72,34 @@ class ScalerGFX : public Arduino_GFX {
       return;
     }
     // Scale 240x240 -> 368x368 (nearest neighbor)
-    // Batch rows to reduce QSPI transaction count (368/32 ≈ 12 транзакций вместо ~23)
     const int BATCH = 32;
     static uint16_t batchBuf[LCD_W * BATCH];
     const int stripStartY = CONTENT_H - ACTION_STRIP_H;
+    const int stripX = LCD_W - (LCD_W * 3 / 4);  // 92 — иконки справа от этого
+    const int ageAreaTop = CONTENT_H - 23, ageAreaBottom = CONTENT_H - 9;
 
     for (int dyStart = 0; dyStart < CONTENT_H; dyStart += BATCH) {
       int dyEnd = (dyStart + BATCH < CONTENT_H) ? dyStart + BATCH : CONTENT_H;
       int batchRows = dyEnd - dyStart;
 
-      // Пропускаем область полосы после первой отрисовки — иначе при смене выбора
-      // контент перезаписывает иконки и возникает моргание
       if (actionStripVisible && actionStripDrawn && dyStart >= stripStartY) {
+        // Область возраста (x < stripX) не пересекается с иконками — перерисовываем
+        if (dyEnd > ageAreaTop && dyStart < ageAreaBottom) {
+          const int ay0 = (dyStart > ageAreaTop) ? dyStart : ageAreaTop;
+          const int ay1 = (dyEnd < ageAreaBottom) ? dyEnd : ageAreaBottom;
+          const int ageRows = ay1 - ay0;
+          static uint16_t ageBuf[92 * 14];  // stripX=92
+          int idx = 0;
+          for (int dy = ay0; dy < ay1; dy++) {
+            int sy = dy * CONTENT_LOGICAL_H / CONTENT_H;
+            const uint16_t* srcRow = bitmap + (size_t)sy * CONTENT_LOGICAL_W;
+            for (int dx = 0; dx < stripX; dx++) {
+              int sx = dx * CONTENT_LOGICAL_W / CONTENT_SCALE_NUM;
+              ageBuf[idx++] = srcRow[sx];
+            }
+          }
+          _output->draw16bitRGBBitmap(0, ay0, ageBuf, stripX, ageRows);
+        }
         continue;
       }
       if (actionStripVisible && actionStripDrawn && dyEnd > stripStartY) {
