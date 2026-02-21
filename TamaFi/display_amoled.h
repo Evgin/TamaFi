@@ -61,3 +61,4 @@ void draw16bitBitmapToContentProgmem(int x, int y, int w, int h, const uint16_t*
 #define TFT_MAGENTA     0xF81F
 #define TFT_YELLOW      0xFFE0
 #define TFT_DARKGREY    0x7BEF
+#define TFT_LIGHTGREY   0xC618

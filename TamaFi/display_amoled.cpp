@@ -1,5 +1,7 @@
+// display_amoled.cpp - force rebuild
 #include "display_amoled.h"
 #include "device_config.h"
+#include "debug_icon.h"
 
 #if UI_DEBUG_TIMING
 static unsigned long lastFlushMs = 0;
@@ -14,9 +16,12 @@ static unsigned long lastFlushMs = 0;
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 
+extern PetState petState;
+
 static bool actionStripVisible = false;
+static bool actionStripDrawn = false;        // true = strip уже нарисована, не перезаписывать контентом
 static int actionStripSelectedIndex = -1;
-static bool actionStripNeedsRedraw = true;   // true = draw strip area; false = skip (preserve)
+static bool actionStripNeedsRedraw = true;
 
 #define ACTION_STRIP_BORDER_COLOR TFT_WHITE  // visible on green game background
 
@@ -44,7 +49,7 @@ static void menuCallback(PetState* state) {
 }
 
 static ActionStripButton actionStripButtons[] = {
-    { ICON_MENU, menuCallback },
+    { ICON_MENU, menuCallback },   // [0] = справа
     { ICON_FORK, feedCallback },
     { ICON_CROSS, medicineCallback },
 };
@@ -76,12 +81,12 @@ class ScalerGFX : public Arduino_GFX {
       int dyEnd = (dyStart + BATCH < CONTENT_H) ? dyStart + BATCH : CONTENT_H;
       int batchRows = dyEnd - dyStart;
 
-      // Skip strip area when visible and no redraw needed
-      if (actionStripVisible && !actionStripNeedsRedraw && dyStart >= stripStartY) {
+      // Пропускаем область полосы после первой отрисовки — иначе при смене выбора
+      // контент перезаписывает иконки и возникает моргание
+      if (actionStripVisible && actionStripDrawn && dyStart >= stripStartY) {
         continue;
       }
-      if (actionStripVisible && !actionStripNeedsRedraw && dyEnd > stripStartY) {
-        // Partial batch: only draw rows before stripStartY
+      if (actionStripVisible && actionStripDrawn && dyEnd > stripStartY) {
         if (dyStart >= stripStartY) continue;
         dyEnd = stripStartY;
         batchRows = dyEnd - dyStart;
@@ -208,7 +213,14 @@ void setIndicatorState(IndicatorState s) {
 
 void setActionStripVisible(bool visible) {
   actionStripVisible = visible;
-  if (visible) actionStripNeedsRedraw = true;
+  if (!visible) {
+    actionStripDrawn = false;  // при следующем показе — полная перерисовка
+  } else {
+    actionStripDrawn = false;  // при первом показе нужно нарисовать контент в области полосы
+    actionStripSetSelected(0);  // по умолчанию — самая правая (индекс 0 = правый край)
+    actionStripNeedsRedraw = true;
+  }
+  ICON_DBG_F("[icon] setActionStripVisible=%d", visible ? 1 : 0);
 }
 
 void actionStripSetSelected(int index) {
@@ -228,6 +240,8 @@ int actionStripGetSelected() {
 }
 
 void actionStripMoveSelection(int delta) {
+  // i=0 справа, i=n-1 слева: UP (delta=-1) = влево = +1 по индексу, DOWN (+1) = вправо = -1
+  delta = -delta;
   int s = actionStripSelectedIndex;
   if (delta < 0) {
     actionStripSetSelected(s <= 0 ? actionStripButtonCount - 1 : s - 1);
@@ -246,6 +260,9 @@ void actionStripInvokeSelected(PetState* petState) {
 static void drawActionStripIcons() {
   if (!actionStripVisible) return;
 
+  actionStripDrawn = true;  // полоса нарисована — при следующем flush не перезаписывать контентом
+  ICON_DBG("[icon] drawActionStripIcons: drawing");
+
   Arduino_GFX* gfx = realGfx;
   if (!gfx) return;
 
@@ -255,44 +272,46 @@ static void drawActionStripIcons() {
   const int stripW      = LCD_W * 3 / 4;
   const int stripX      = LCD_W - stripW;
   const int n           = actionStripButtonCount;
-  const int btnY        = stripStartY + (ACTION_STRIP_H - ACTION_STRIP_BTN_SIZE) / 2;
+
+  const int iconH = 32;
+  const int frameSize = 56;   // белый квадрат выбора (64 − 4×2)
+  const int graySize = 48;    // серая область
+  const int btnSize = frameSize;
+  const int btnY    = stripStartY + (ACTION_STRIP_H - btnSize) / 2;
+  const int grayInset = (frameSize - graySize) / 2;  // 2 px отступ от белого
 
   for (int i = 0; i < n; i++) {
+    // i=0 справа, i=n-1 слева (индекс 0 = последняя в массиве = самая правая)
     int x = stripX + stripW - ACTION_STRIP_RIGHT_PADDING
-          - (n - i) * ACTION_STRIP_BTN_SIZE
-          - (n - 1 - i) * ACTION_STRIP_BTN_GAP;
+          - (i + 1) * btnSize
+          - i * ACTION_STRIP_BTN_GAP;
 
     bool selected = (i == actionStripSelectedIndex);
 
-    // Frame: larger square first (when selected), then button on top
-    const int T = 5;  // frame thickness
-    if (selected) {
-      gfx->fillRect(x - T, btnY - T, ACTION_STRIP_BTN_SIZE + 2 * T, ACTION_STRIP_BTN_SIZE + 2 * T, ACTION_STRIP_BORDER_COLOR);
-    }
-    gfx->fillRect(x, btnY, ACTION_STRIP_BTN_SIZE, ACTION_STRIP_BTN_SIZE, TFT_DARKGREY);
+    // Белый и серый квадраты временно отключены
+    // if (selected) { gfx->fillRect(...); gfx->fillRect(...); }
 
-    // Icon: geometric primitives (U8g2_for_Adafruit_GFX conflicts with Arduino_GFX)
-    const int cx = x + ACTION_STRIP_BTN_SIZE / 2;
-    const int cy = btnY + ACTION_STRIP_BTN_SIZE / 2;
-    const uint16_t iconColor = TFT_WHITE;
-    switch (actionStripButtons[i].icon) {
-      case ICON_MENU:
-        gfx->fillRect(cx - 10, cy - 8, 20, 3, iconColor);
-        gfx->fillRect(cx - 10, cy - 1, 20, 3, iconColor);
-        gfx->fillRect(cx - 10, cy + 6, 20, 3, iconColor);
-        break;
-      case ICON_FORK:
-        gfx->fillRect(cx - 8, cy - 12, 2, 10, iconColor);
-        gfx->fillRect(cx - 2, cy - 12, 2, 10, iconColor);
-        gfx->fillRect(cx + 6, cy - 12, 2, 10, iconColor);
-        gfx->fillRect(cx - 3, cy - 2, 6, 14, iconColor);
-        break;
-      case ICON_CROSS:
-        gfx->fillRect(cx - 8, cy - 2, 16, 4, iconColor);
-        gfx->fillRect(cx - 2, cy - 10, 4, 20, iconColor);
-        break;
-    }
+#if 1  // иконки включены
+    // Icons: all Streamline (48+ in each font), 2x scale
+    static const struct { const uint8_t* font; char ch; } iconCfg[] = {
+      { u8g2_font_streamline_interface_essential_home_menu_t, '\x33' },
+      { u8g2_font_streamline_food_drink_t,                  '\x3E' },
+      { u8g2_font_streamline_health_beauty_t,               '\x44' },
+    };
+    gfx->setUTF8Print(false);
+    gfx->setTextColor(selected ? TFT_BLACK : TFT_WHITE);
+    gfx->setTextSize(2);
+    const int iconBaselineY = btnY + (btnSize + iconH) / 2 + 5;
+    const int iconX = x + (btnSize - iconH) / 2 - 4;
+    gfx->setCursor(iconX, iconBaselineY);
+    int idx = (int)actionStripButtons[i].icon;
+    gfx->setFont(iconCfg[idx].font);
+    gfx->print(iconCfg[idx].ch);
+#endif
   }
+  gfx->setFont();
+  gfx->setTextSize(1);
+  gfx->setUTF8Print(false);
 }
 
 void flushContentAndDrawControlBar() {
@@ -305,7 +324,26 @@ void flushContentAndDrawControlBar() {
 #endif
   // Draw action strip only when needed (like control bar — drawn once, not every frame)
   if (actionStripNeedsRedraw) {
+    ICON_DBG_F("[icon] flush: needsRedraw=1 visible=%d", actionStripVisible);
     drawActionStripIcons();
+  }
+  // Возраст питомца в левом нижнем углу (на дисплее, на 40 px ниже)
+  if (currentScreen == SCREEN_HOME) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%luд %luч %luм",
+             (unsigned long)petState.pet.ageDays,
+             (unsigned long)petState.pet.ageHours,
+             (unsigned long)petState.pet.ageMinutes);
+    Arduino_GFX* gfx = realGfx;
+    if (gfx) {
+      gfx->setFont(u8g2_font_6x13_t_cyrillic);
+      gfx->setTextColor(TFT_BLACK);
+      gfx->setUTF8Print(true);
+      gfx->setCursor(12, CONTENT_H - 8);   // над панелью UP/OK/DOWN, ~40 px ниже чем в контенте
+      gfx->print(buf);
+      gfx->setFont();
+      gfx->setUTF8Print(false);
+    }
   }
 }
 

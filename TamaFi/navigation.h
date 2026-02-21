@@ -29,6 +29,12 @@ extern bool     hatchTriggered;
 extern int      mainMenuIndex;
 extern int      settingsMenuIndex;
 
+// ============ User settings defaults ============
+#define DEFAULT_SOUND_VOLUME         0
+#define DEFAULT_TFT_BRIGHTNESS_INDEX 2
+#define DEFAULT_AUTO_SLEEP_MS        0       // 0=Off, 30000, 60000, 120000
+#define DEFAULT_AUTO_SAVE_MS         60000
+
 // ============ User settings ============
 
 extern uint8_t  soundVolume;        // 0 = Off, 1-3 = volume level

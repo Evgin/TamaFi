@@ -42,13 +42,13 @@ Screen persistenceGetSavedScreen() {
 void loadState(PetState &pet) {
     int h = prefs.getInt("hunger", -1);
     if (h == -1) {
-        // First boot — use defaults already in petState
+        // First boot — use defaults
         hasHatchedOnce     = false;
-        soundVolume        = 3;
-        tftBrightnessIndex = 1;
+        soundVolume        = DEFAULT_SOUND_VOLUME;
+        tftBrightnessIndex = DEFAULT_TFT_BRIGHTNESS_INDEX;
         petSkin            = 0;
-        autoSleepMs        = 60000;
-        autoSaveMs         = 30000;
+        autoSleepMs        = DEFAULT_AUTO_SLEEP_MS;
+        autoSaveMs         = DEFAULT_AUTO_SAVE_MS;
         saveState(pet);
         return;
     }
@@ -64,8 +64,8 @@ void loadState(PetState &pet) {
     pet.stage          = (Stage)prefs.getUChar("stage", (uint8_t)STAGE_BABY);
     hasHatchedOnce     = prefs.getBool("hatched", false);
 
-    soundVolume        = prefs.getUChar("sndVol", 3);
-    tftBrightnessIndex = prefs.getUChar("tftBri", 1);
+    soundVolume        = prefs.getUChar("sndVol", DEFAULT_SOUND_VOLUME);
+    tftBrightnessIndex = prefs.getUChar("tftBri", DEFAULT_TFT_BRIGHTNESS_INDEX);
     petSkin            = prefs.getUChar("petSkin", 0);
 
     // Apply loaded volume level to hardware
@@ -75,8 +75,8 @@ void loadState(PetState &pet) {
     pet.traitActivity  = prefs.getUChar("tAct", 60);
     pet.traitStress    = prefs.getUChar("tStr", 40);
 
-    autoSleepMs        = prefs.getULong("sleepMs", 60000);
-    uint16_t saveSec   = prefs.getUShort("saveMs", 30);
+    autoSleepMs        = prefs.getULong("sleepMs", DEFAULT_AUTO_SLEEP_MS);
+    uint16_t saveSec   = prefs.getUShort("saveMs", (uint16_t)(DEFAULT_AUTO_SAVE_MS / 1000));
     autoSaveMs         = (uint16_t)(saveSec * 1000);
 
     savedScreen        = (Screen)prefs.getUChar("screen", (uint8_t)SCREEN_BOOT);

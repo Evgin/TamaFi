@@ -15,9 +15,9 @@
 #define LCD_H       448
 #define CONTENT_H   368   // content area height (square 368x368)
 #define CONTROL_H   80    // bottom strip for virtual buttons / indicators
-#define ACTION_STRIP_H  50  // action strip overlay height (drawn over bottom of content)
+#define ACTION_STRIP_H  64
 #define ACTION_STRIP_BTN_SIZE        40  // side of square for all buttons
-#define ACTION_STRIP_BTN_GAP          8  // gap between buttons
+#define ACTION_STRIP_BTN_GAP          0  // gap between buttons
 #define ACTION_STRIP_RIGHT_PADDING    8  // padding from right edge of strip
 
 // Logical content size (game renders at this resolution, then scaled to CONTENT_H x CONTENT_H)

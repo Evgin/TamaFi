@@ -23,7 +23,7 @@
 #include "battery.h"
 
 HWCDC USBSerial;
-#define DBG(x) do { Serial.println(x); USBSerial.println(x); } while(0)
+#define DBG(x) do {} while(0)
 
 // ============ Pet state (owned by orchestrator) ============
 
@@ -120,6 +120,12 @@ void setup() {
 
     displayAmoledInit();
 
+#ifdef U8G2_WITH_UNICODE
+    DBG("[icon] U8G2_WITH_UNICODE: defined");
+#else
+    DBG("[icon] U8G2_WITH_UNICODE: NOT defined");
+#endif
+
     if (soundInit()) {
         DBG("[sound] ES8311 OK");
     } else {
@@ -150,7 +156,9 @@ void setup() {
 
     // UI init
     uiInit();
+    DBG("[icon] before uiOnScreenChange");
     uiOnScreenChange(currentScreen);
+    DBG("[icon] after uiOnScreenChange");
 }
 
 // ============ loop ============

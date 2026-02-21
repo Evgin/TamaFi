@@ -2,6 +2,7 @@
 #include <pgmspace.h>
 #define U8G2_FONT_SUPPORT
 #include "device_config.h"
+#include "debug_icon.h"
 #include "ui.h"
 #include "ui_common.h"
 #include "ui_menu.h"
@@ -279,7 +280,6 @@ static void screenHome() {
 #endif
 
         drawStatsBlock();
-
         flushContentAndDrawControlBar();
         return;
     }
@@ -300,7 +300,6 @@ static void screenHome() {
 #endif
 
         drawStatsBlock();
-
         flushContentAndDrawControlBar();
         return;
     }
@@ -486,6 +485,7 @@ void uiOnScreenChange(Screen newScreen) {
     if (newScreen == SCREEN_HATCH) {
         eggIdleFrameUi = hatchFrameUi = 0;
     }
+    ICON_DBG_F("[icon] uiOnScreenChange HOME=%d", newScreen == SCREEN_HOME ? 1 : 0);
     setActionStripVisible(newScreen == SCREEN_HOME);
     if (newScreen == SCREEN_HOME) {
         actionStripSetSelected(0);

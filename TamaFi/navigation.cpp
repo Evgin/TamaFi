@@ -20,10 +20,10 @@ bool     hatchTriggered      = false;
 int      mainMenuIndex       = 0;
 int      settingsMenuIndex   = 0;
 
-uint8_t  soundVolume         = 3;       // 0=Off, 1-3=volume level
-uint8_t  tftBrightnessIndex  = 1;
-uint32_t autoSleepMs         = 60000;  // 0=Off, 30000, 60000, 120000
-uint16_t autoSaveMs          = 30000;
+uint8_t  soundVolume         = DEFAULT_SOUND_VOLUME;
+uint8_t  tftBrightnessIndex  = DEFAULT_TFT_BRIGHTNESS_INDEX;
+uint32_t autoSleepMs         = DEFAULT_AUTO_SLEEP_MS;
+uint16_t autoSaveMs          = DEFAULT_AUTO_SAVE_MS;
 uint8_t  petSkin             = 0;       // 0=Golem, 1=Dragon, 2=Robot, 3=Other
 
 // ============ Internal helpers ============

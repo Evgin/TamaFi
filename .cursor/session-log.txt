@@ -86,3 +86,22 @@
 ### Важно на будущее
 - Заменить WIFI_SSID/WIFI_PASSWORD в device_config.h на реальные или вынести в wifi_config_local.h (.gitignore)
 - Опционально: пункт «Обновить время» в меню настроек для принудительной NTP-синхронизации
+
+---
+Дата: 2025-02-21
+---
+
+### Краткое описание сессии
+Создан документ PET_LOGIC.md, пользователь перенёс документы в Migration/, обновлён Migration/README.md.
+
+### Обсуждённое
+- Состояния питомца: Stage, Mood, Activity, RestPhase
+- Деградация статов, эволюция, настроение, автономные решения
+- Перенос PET_LOGIC.md и CORE_DISTRIBUTION.md в Migration/
+- Обновление оглавления Migration/README.md
+
+### Внесённые изменения
+- TamaFi/PET_LOGIC.md → Migration/PET_LOGIC.md (перенесено пользователем)
+- Migration/README.md: добавлены пункты 6 (PET_LOGIC.md) и 7 (CORE_DISTRIBUTION.md) в раздел «Содержимое»
+- Migration/PET_LOGIC.md: добавлен раздел 2 «petTick и время» (источник времени, таймеры, возраст, Deep Sleep), перенумерованы разделы 2–13
+- Migration/PET_LOGIC.md: добавлен раздел 14 «Варианты шкалы времени питомца» (Tamagotchi P1/P2, варианты A–D, сравнение для TamaFi, рекомендации)
