@@ -1,11 +1,11 @@
 #include "pet_logic.h"
+#include <Preferences.h>
 
 // ============ Behavioral timing constants ============
 
 static const unsigned long HUNGER_TICK_MS      = 5000;
 static const unsigned long HAPPINESS_TICK_MS   = 7000;
 static const unsigned long HEALTH_TICK_MS      = 10000;
-static const unsigned long AGE_TICK_MS         = 60000;
 
 static const unsigned long HUNGER_EFFECT_DELAY_MS = 100;
 static const int           HUNGER_FRAME_MAX       = 4;
@@ -17,6 +17,12 @@ static const unsigned long REST_MAX_MS         = 15000;
 
 static const uint32_t DECISION_INTERVAL_MIN = 8000;
 static const uint32_t DECISION_INTERVAL_MAX = 15000;
+
+// ============ Time scale (1 real sec = N pet sec) ============
+
+static uint8_t s_petTimeScale = 1;
+static const uint8_t TIME_SCALE_PRESETS[] = { 1, 10, 60, 100 };
+static const int TIME_SCALE_PRESET_COUNT = 4;
 
 // ============ Queue helpers ============
 
@@ -415,7 +421,8 @@ void petTick(PetState &s, unsigned long now, bool allowAutonomous) {
     }
 
     // 6. Age tick
-    if (now - s.ageTimer >= AGE_TICK_MS) {
+    uint32_t ageTickMs = 60000UL / (s_petTimeScale >= 1 ? s_petTimeScale : 1);
+    if (now - s.ageTimer >= ageTickMs) {
         s.pet.ageMinutes++;
         if (s.pet.ageMinutes >= 60) {
             s.pet.ageMinutes -= 60;
@@ -486,4 +493,40 @@ void petInjectWifiResult(PetState &s, const WifiStats &wifi, unsigned long now) 
     s.lastWifi         = wifi;
     s.lastWifiScanTime = now;
     s.wifiResultReady  = true;
+}
+
+// ============ Time scale API ============
+
+uint8_t petGetTimeScale() {
+    return s_petTimeScale;
+}
+
+void petSetTimeScale(uint8_t scale) {
+    s_petTimeScale = (scale >= 1) ? scale : 1;
+    if (s_petTimeScale > 255) s_petTimeScale = 255;
+}
+
+void petCycleTimeScale() {
+    for (int i = 0; i < TIME_SCALE_PRESET_COUNT; i++) {
+        if (s_petTimeScale == TIME_SCALE_PRESETS[i]) {
+            s_petTimeScale = TIME_SCALE_PRESETS[(i + 1) % TIME_SCALE_PRESET_COUNT];
+            return;
+        }
+    }
+    s_petTimeScale = TIME_SCALE_PRESETS[0];
+}
+
+const char* petGetTimeScaleLabel() {
+    static char buf[8];
+    snprintf(buf, sizeof(buf), "×%d", s_petTimeScale);
+    return buf;
+}
+
+void petLoadTimeScale(Preferences &prefs) {
+    s_petTimeScale = prefs.getUChar("petScale", 1);
+    if (s_petTimeScale < 1) s_petTimeScale = 1;
+}
+
+void petSaveTimeScale(Preferences &prefs) {
+    prefs.putUChar("petScale", s_petTimeScale);
 }

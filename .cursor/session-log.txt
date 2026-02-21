@@ -105,3 +105,26 @@
 - Migration/README.md: добавлены пункты 6 (PET_LOGIC.md) и 7 (CORE_DISTRIBUTION.md) в раздел «Содержимое»
 - Migration/PET_LOGIC.md: добавлен раздел 2 «petTick и время» (источник времени, таймеры, возраст, Deep Sleep), перенумерованы разделы 2–13
 - Migration/PET_LOGIC.md: добавлен раздел 14 «Варианты шкалы времени питомца» (Tamagotchi P1/P2, варианты A–D, сравнение для TamaFi, рекомендации)
+
+---
+Дата: 2025-02-21
+---
+
+### Краткое описание сессии
+Реализован настраиваемый масштаб времени питомца (petTimeScale). Масштаб 1–255: 1 сек реал = N сек питомца.
+
+### Обсуждённое
+- План: вся логика в pet_logic, минимальные правки в persistence/navigation/ui_menu
+- Пресеты: ×1, ×10, ×60, ×100 (циклически в Settings)
+- Формула: ageTickMs = 60000 / petTimeScale
+
+### Внесённые изменения
+- TamaFi/pet_logic.h: API petGetTimeScale, petSetTimeScale, petCycleTimeScale, petGetTimeScaleLabel, petLoadTimeScale, petSaveTimeScale
+- TamaFi/pet_logic.cpp: s_petTimeScale, удалён AGE_TICK_MS, age tick использует масштаб
+- TamaFi/persistence.cpp: petLoadTimeScale(prefs), petSaveTimeScale(prefs)
+- TamaFi/navigation.cpp: case 5 petCycleTimeScale, индексы 6–8, % 9
+- TamaFi/ui_menu.cpp: «Масштаб вр.» в labels, case 5 в settingsGetValue
+- Migration/PET_LOGIC.md: обновлены разделы 2.4, 13, 14.3, 14.4
+
+### Важно на будущее
+- Масштаб сохраняется в NVS (ключ petScale)

@@ -327,19 +327,19 @@ void flushContentAndDrawControlBar() {
     ICON_DBG_F("[icon] flush: needsRedraw=1 visible=%d", actionStripVisible);
     drawActionStripIcons();
   }
-  // Возраст питомца в левом нижнем углу (на дисплее, на 40 px ниже)
+  // Возраст над панелью UP/OK/DOWN, на траве (низ контента)
   if (currentScreen == SCREEN_HOME) {
     char buf[24];
-    snprintf(buf, sizeof(buf), "%luд %luч %luм",
+    snprintf(buf, sizeof(buf), "%3luд %2luч %2luм",
              (unsigned long)petState.pet.ageDays,
              (unsigned long)petState.pet.ageHours,
              (unsigned long)petState.pet.ageMinutes);
     Arduino_GFX* gfx = realGfx;
     if (gfx) {
       gfx->setFont(u8g2_font_6x13_t_cyrillic);
-      gfx->setTextColor(TFT_BLACK);
+      gfx->setTextColor(TFT_BLACK);  // на траве
       gfx->setUTF8Print(true);
-      gfx->setCursor(12, CONTENT_H - 8);   // над панелью UP/OK/DOWN, ~40 px ниже чем в контенте
+      gfx->setCursor(12, CONTENT_H - 10);  // над панелью, на траве
       gfx->print(buf);
       gfx->setFont();
       gfx->setUTF8Print(false);

@@ -2,6 +2,7 @@
 #include "ui_common.h"
 #include "display_amoled.h"
 #include "navigation.h"
+#include "pet_logic.h"
 #include <Arduino_GFX_Library.h>
 #define U8G2_FONT_SUPPORT
 #include <U8g2lib.h>
@@ -48,6 +49,7 @@ static const char* settingsGetValue(int index) {
         case 2: return petSkinText(petSkin);
         case 3: return autoSleepMs==0?"Выкл":autoSleepMs==30000?"30с":autoSleepMs==60000?"60с":"120с";
         case 4: snprintf(buf, sizeof(buf), "%luс", (unsigned long)(autoSaveMs/1000)); return buf;
+        case 5: return petGetTimeScaleLabel();
         default: return nullptr;
     }
 }
@@ -122,8 +124,8 @@ void screenMenu(int mainMenuIndex) {
 void screenSettings(int settingsMenuIndex) {
     const char* labels[] = {
         "Яркость", "Звук", "Скин", "Авто сон", "Авто сохр.",
-        "Сброс питомца", "Сброс всего", "Назад"
+        "Масштаб вр.", "Сброс питомца", "Сброс всего", "Назад"
     };
-    drawMenuList("Настройки", labels, 8, settingsMenuIndex,
+    drawMenuList("Настройки", labels, 9, settingsMenuIndex,
                  setHighlightY, setHighlightTargetY, lastSetAnim, settingsGetValue);
 }

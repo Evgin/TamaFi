@@ -4,7 +4,10 @@
 #include "sound.h"
 #include "persistence.h"
 #include "pet_logic.h"
+#include "battery.h"
 #include <esp_sleep.h>
+#include <esp_bt.h>
+#include <WiFi.h>
 #include <Arduino.h>
 
 void deviceEnterSleep(PetState &petState) {
@@ -12,8 +15,16 @@ void deviceEnterSleep(PetState &petState) {
     soundStopAll();
     soundSetVolume(0);
 
+    // Отключить WiFi и Bluetooth перед сном — иначе ~1.6 mA вместо ~10–150 µA
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    esp_bt_controller_disable();
+
     // Применить отложенные команды перед сохранением
     petFlushCommands(petState, millis());
+    batteryUpdate();
+    const BatteryInfo& bat = batteryGetInfo();
+    persistenceSaveBatteryBeforeSleep(bat.percent, bat.voltage);
     saveState(petState);
 
     // Ждём отпускания BOOT, иначе проснёмся сразу

@@ -169,8 +169,8 @@ void navHandleInput(InputButton e, PetState &petState) {
 
     // ===== SETTINGS =====
     if (currentScreen == SCREEN_SETTINGS) {
-        if (up)   { sndClick(); settingsMenuIndex = (settingsMenuIndex - 1 + 8) % 8; }
-        if (down) { sndClick(); settingsMenuIndex = (settingsMenuIndex + 1) % 8; }
+        if (up)   { sndClick(); settingsMenuIndex = (settingsMenuIndex - 1 + 9) % 9; }
+        if (down) { sndClick(); settingsMenuIndex = (settingsMenuIndex + 1) % 9; }
         if (ok) {
             sndClick();
             switch (settingsMenuIndex) {
@@ -201,17 +201,20 @@ void navHandleInput(InputButton e, PetState &petState) {
                     else if (autoSaveMs == 30000) autoSaveMs = 60000;
                     else                          autoSaveMs = 15000;
                     break;
-                case 5:  // Reset Pet (stats only)
+                case 5:  // Time scale (1 -> 10 -> 60 -> 100 -> 1)
+                    petCycleTimeScale();
+                    break;
+                case 6:  // Reset Pet (stats only)
                     petSendCommand(petState, PET_CMD_RESET);
                     break;
-                case 6:  // Reset All
+                case 7:  // Reset All
                     petSendCommand(petState, PET_CMD_RESET_FULL);
                     petFlushCommands(petState, millis());
                     hasHatchedOnce = false;
                     saveState(petState);
                     navSetScreen(SCREEN_HATCH);
                     return;
-                case 7:  // Back
+                case 8:  // Back
                     navSetScreen(SCREEN_MENU);
                     break;
             }

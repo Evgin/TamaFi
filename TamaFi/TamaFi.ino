@@ -23,7 +23,7 @@
 #include "battery.h"
 
 HWCDC USBSerial;
-#define DBG(x) do {} while(0)
+#define DBG(x) do { Serial.println(x); USBSerial.println(x); } while(0)
 
 // ============ Pet state (owned by orchestrator) ============
 
@@ -146,6 +146,7 @@ void setup() {
     // Load saved state (overwrites petInit defaults if save exists)
     persistenceInit();
     loadState(petState);
+    persistenceLogBatteryDeltaAfterWake();
 
     // Navigation init
     navInit();

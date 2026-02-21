@@ -1,7 +1,11 @@
 #include "persistence.h"
 #include "navigation.h"       // soundVolume, tftBrightnessIndex, hasHatchedOnce, petSkin, currentScreen
 #include "sound.h"            // soundSetVolume
+#include "battery.h"          // batteryGetInfo
+#include "HWCDC.h"
 #include <Preferences.h>
+
+extern HWCDC USBSerial;
 
 static Preferences prefs;
 static Screen savedScreen = SCREEN_BOOT;
@@ -33,6 +37,7 @@ void saveState(const PetState &pet) {
     prefs.putULong("sleepMs", autoSleepMs);
     prefs.putUShort("saveMs", (uint16_t)(autoSaveMs / 1000));  // сохраняем в секундах
     prefs.putUChar("screen", (uint8_t)currentScreen);
+    petSaveTimeScale(prefs);
 }
 
 Screen persistenceGetSavedScreen() {
@@ -79,5 +84,32 @@ void loadState(PetState &pet) {
     uint16_t saveSec   = prefs.getUShort("saveMs", (uint16_t)(DEFAULT_AUTO_SAVE_MS / 1000));
     autoSaveMs         = (uint16_t)(saveSec * 1000);
 
+    petLoadTimeScale(prefs);
     savedScreen        = (Screen)prefs.getUChar("screen", (uint8_t)SCREEN_BOOT);
+}
+
+void persistenceSaveBatteryBeforeSleep(int percent, uint16_t voltageMv) {
+    prefs.putInt("batPct", percent);
+    prefs.putUShort("batMv", voltageMv);
+}
+
+void persistenceLogBatteryDeltaAfterWake() {
+    if (!prefs.isKey("batPct")) return;  // не было сна — нечего сравнивать
+    int savedPct = prefs.getInt("batPct", -999);
+    if (savedPct == -999) return;
+    uint16_t savedMv = prefs.getUShort("batMv", 0);
+    const BatteryInfo& cur = batteryGetInfo();
+    int deltaMv = (int)cur.voltage - (int)savedMv;
+    if (savedPct >= 0 && cur.percent >= 0) {
+        int deltaPct = cur.percent - savedPct;
+        Serial.printf("[battery] sleep: saved %d%% (%u mV) -> current %d%% (%u mV), delta %+d%% (%+d mV)\n",
+                      savedPct, savedMv, cur.percent, cur.voltage, deltaPct, deltaMv);
+        USBSerial.printf("[battery] sleep: saved %d%% (%u mV) -> current %d%% (%u mV), delta %+d%% (%+d mV)\n",
+                        savedPct, savedMv, cur.percent, cur.voltage, deltaPct, deltaMv);
+    } else {
+        Serial.printf("[battery] sleep: saved %d%% (%u mV) -> current %d%% (%u mV), delta voltage %+d mV\n",
+                      savedPct, savedMv, cur.percent, cur.voltage, deltaMv);
+        USBSerial.printf("[battery] sleep: saved %d%% (%u mV) -> current %d%% (%u mV), delta voltage %+d mV\n",
+                        savedPct, savedMv, cur.percent, cur.voltage, deltaMv);
+    }
 }

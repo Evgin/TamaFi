@@ -171,3 +171,14 @@ void petFlushCommands(PetState &state, unsigned long now);
 
 // Inject WiFi scan result (called by orchestrator when wifi scan completes).
 void petInjectWifiResult(PetState &state, const WifiStats &wifi, unsigned long now);
+
+// ============ Time scale (1 real sec = N pet sec) ============
+
+uint8_t petGetTimeScale();
+void petSetTimeScale(uint8_t scale);
+void petCycleTimeScale();
+const char* petGetTimeScaleLabel();
+
+class Preferences;
+void petLoadTimeScale(Preferences &prefs);
+void petSaveTimeScale(Preferences &prefs);
