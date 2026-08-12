@@ -41,7 +41,7 @@ extern uint8_t  soundVolume;        // 0 = Off, 1-3 = volume level
 extern uint8_t  tftBrightnessIndex;
 extern uint32_t autoSleepMs;        // 0=Off, 30000, 60000, 120000
 extern uint16_t autoSaveMs;
-extern uint8_t  petSkin;            // 0=Golem, 1=Dragon, 2=Robot, 3=Other
+extern uint8_t  petSkin;            // 0=Gorgon, 1=Golem
 
 // ============ API ============
 
@@ -60,3 +60,7 @@ void navPushScreen(Screen newScreen);
 
 // Pop stack and return to previous screen. Used for OK on STATUS/SYSINFO.
 void navGoBack();
+
+// Execute the selected main menu item (single source of truth for menu actions).
+// Called from both physical button OK handler and LVGL touch click callback.
+void navMainMenuExecute(int idx);

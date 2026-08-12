@@ -1,7 +1,8 @@
 #include "navigation.h"
+#include "lvgl_settings.h"
 #include "sound.h"
 #include "persistence.h"
-#include "display_amoled.h"    // setDisplayBrightness
+#include "display_amoled.h"
 
 // Forward declaration — defined in ui.cpp
 void uiOnScreenChange(Screen newScreen);
@@ -24,7 +25,7 @@ uint8_t  soundVolume         = DEFAULT_SOUND_VOLUME;
 uint8_t  tftBrightnessIndex  = DEFAULT_TFT_BRIGHTNESS_INDEX;
 uint32_t autoSleepMs         = DEFAULT_AUTO_SLEEP_MS;
 uint16_t autoSaveMs          = DEFAULT_AUTO_SAVE_MS;
-uint8_t  petSkin             = 0;       // 0=Golem, 1=Dragon, 2=Robot, 3=Other
+uint8_t  petSkin             = 0;       // 0=Gorgon, 1=Golem
 
 // ============ Internal helpers ============
 
@@ -52,23 +53,30 @@ void navInit() {
 }
 
 void navSetScreen(Screen screen) {
+    Screen prev = currentScreen;
     currentScreen = screen;
+    Serial.printf("[nav] setScreen: %d -> %d\n", (int)prev, (int)screen);
     uiOnScreenChange(currentScreen);
 }
 
 void navPushScreen(Screen newScreen) {
+    Screen prev = currentScreen;
     if (screenStackDepth < SCREEN_STACK_SIZE) {
         screenStack[screenStackDepth++] = currentScreen;
     }
     currentScreen = newScreen;
+    Serial.printf("[nav] pushScreen: %d -> %d (stack=%d)\n", (int)prev, (int)newScreen, screenStackDepth);
     uiOnScreenChange(currentScreen);
 }
 
 void navGoBack() {
     if (screenStackDepth > 0) {
+        Screen prev = currentScreen;
         currentScreen = screenStack[--screenStackDepth];
+        Serial.printf("[nav] goBack: %d -> %d (stack=%d)\n", (int)prev, (int)currentScreen, screenStackDepth);
         uiOnScreenChange(currentScreen);
     } else {
+        Serial.println("[nav] goBack: stack empty, fallback to MENU");
         navSetScreen(SCREEN_MENU);  // fallback
     }
 }
@@ -145,15 +153,7 @@ void navHandleInput(InputButton e, PetState &petState) {
     if (currentScreen == SCREEN_MENU) {
         if (up)   { sndClick(); mainMenuIndex = (mainMenuIndex - 1 + 4) % 4; }
         if (down) { sndClick(); mainMenuIndex = (mainMenuIndex + 1) % 4; }
-        if (ok) {
-            sndClick();
-            switch (mainMenuIndex) {
-                case 0: navPushScreen(SCREEN_PET_STATUS); break;
-                case 1: navPushScreen(SCREEN_SYSINFO);    break;
-                case 2: navSetScreen(SCREEN_SETTINGS);   break;
-                case 3: navSetScreen(SCREEN_HOME);       break;
-            }
-        }
+        if (ok)   { sndClick(); navMainMenuExecute(mainMenuIndex); }
         return;
     }
 
@@ -169,55 +169,17 @@ void navHandleInput(InputButton e, PetState &petState) {
 
     // ===== SETTINGS =====
     if (currentScreen == SCREEN_SETTINGS) {
+        if (lvglSettingsIsModalOpen()) {
+            // Picker (or msgbox) is open — forward input to it instead of
+            // changing settingsMenuIndex.
+            lvglSettingsModalInput(e);
+            return;
+        }
         if (up)   { sndClick(); settingsMenuIndex = (settingsMenuIndex - 1 + 9) % 9; }
         if (down) { sndClick(); settingsMenuIndex = (settingsMenuIndex + 1) % 9; }
         if (ok) {
             sndClick();
-            switch (settingsMenuIndex) {
-                case 0:  // Screen Brightness
-                    tftBrightnessIndex = (tftBrightnessIndex + 1) % 3;
-                    applyTftBrightness();
-                    break;
-                case 1:  // Sound (3->2->1->0->3)
-                    soundVolume = (soundVolume == 0) ? 3 : soundVolume - 1;
-                    soundSetVolume(soundVolume);
-                    if (soundVolume == 0) {
-                        soundStopAll();
-                    } else {
-                        sndBeepOk();  // воспроизвести бип на новом уровне
-                    }
-                    break;
-                case 2:  // Pet skin (Golem->Dragon->Robot->Other->Golem)
-                    petSkin = (petSkin + 1) % 4;
-                    break;
-                case 3:  // Auto Sleep (Off -> 30s -> 60s -> 120s -> Off)
-                    if      (autoSleepMs == 0)      autoSleepMs = 30000;
-                    else if (autoSleepMs == 30000)   autoSleepMs = 60000;
-                    else if (autoSleepMs == 60000)   autoSleepMs = 120000;
-                    else                             autoSleepMs = 0;
-                    break;
-                case 4:  // Auto Save
-                    if      (autoSaveMs == 15000) autoSaveMs = 30000;
-                    else if (autoSaveMs == 30000) autoSaveMs = 60000;
-                    else                          autoSaveMs = 15000;
-                    break;
-                case 5:  // Time scale (1 -> 10 -> 60 -> 100 -> 1)
-                    petCycleTimeScale();
-                    break;
-                case 6:  // Reset Pet (stats only)
-                    petSendCommand(petState, PET_CMD_RESET);
-                    break;
-                case 7:  // Reset All
-                    petSendCommand(petState, PET_CMD_RESET_FULL);
-                    petFlushCommands(petState, millis());
-                    hasHatchedOnce = false;
-                    saveState(petState);
-                    navSetScreen(SCREEN_HATCH);
-                    return;
-                case 8:  // Back
-                    navSetScreen(SCREEN_MENU);
-                    break;
-            }
+            lvglSettingsHandleOk(settingsMenuIndex);
         }
         return;
     }
@@ -233,5 +195,14 @@ void navHandleInput(InputButton e, PetState &petState) {
             navSetScreen(SCREEN_HATCH);
         }
         return;
+    }
+}
+
+void navMainMenuExecute(int idx) {
+    switch (idx) {
+        case 0: navPushScreen(SCREEN_PET_STATUS); break;
+        case 1: navPushScreen(SCREEN_SYSINFO);    break;
+        case 2: navSetScreen(SCREEN_SETTINGS);    break;
+        case 3: navSetScreen(SCREEN_HOME);        break;
     }
 }

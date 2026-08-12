@@ -46,6 +46,17 @@ unsigned long getLastFlushMs();
 // Draw sprite with transparency onto content canvas (replacement for pushToSprite).
 void drawSpriteToContent(int x, int y, int w, int h, const uint16_t* buffer, uint16_t transparentColor);
 
+// Draw sprite from PROGMEM with scaling. src = PROGMEM bitmap srcW x srcH, drawn to dstW x dstH.
+// Uses nearest-neighbour. transparentColor pixels are skipped.
+void drawSpriteToContentScaled(int dstX, int dstY, int dstW, int dstH,
+    const uint16_t* src, int srcW, int srcH, uint16_t transparentColor);
+
+// Draw one frame from horizontal sprite sheet (frames side-by-side). sheet = PROGMEM.
+// sheetW x sheetH = full sheet; frameIndex = 0..N-1; frameW x frameH = one frame size.
+void drawSpriteSheetFrameToContentScaled(int dstX, int dstY, int dstW, int dstH,
+    const uint16_t* sheet, int sheetW, int sheetH, int frameIndex, int frameW, int frameH,
+    uint16_t transparentColor);
+
 // Draw full bitmap from RAM to content canvas (e.g. background).
 void draw16bitBitmapToContent(int x, int y, int w, int h, const uint16_t* bitmap);
 // Draw from PROGMEM (flash). srcStride = source row width (0 = use w).

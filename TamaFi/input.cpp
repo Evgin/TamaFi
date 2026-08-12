@@ -194,3 +194,10 @@ InputButton inputConsumeEvent() {
 void inputResetActivity() {
   lastActiveMs = millis();
 }
+
+bool inputGetTouchState(int16_t* outX, int16_t* outY) {
+  if (!lastTouchActive || lastTouchY >= CONTROL_STRIP_TOP) return false;
+  if (outX) *outX = lastTouchX;
+  if (outY) *outY = lastTouchY;
+  return true;
+}

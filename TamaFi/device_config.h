@@ -14,6 +14,7 @@
 #define LCD_W       368
 #define LCD_H       448
 #define CONTENT_H   368   // content area height (square 368x368)
+#define LVGL_HEADER_H 36  // header bar height for LVGL menu screens
 #define CONTROL_H   80    // bottom strip for virtual buttons / indicators
 #define ACTION_STRIP_H  64
 #define ACTION_STRIP_BTN_SIZE        40  // side of square for all buttons

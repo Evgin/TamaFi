@@ -5,7 +5,8 @@
 #define HATCH_DELAY         300   // ms between hatch frames
 
 // ===== Pet idle animation =====
-#define IDLE_BASE_DELAY     200   // default idle speed
+#define IDLE_BASE_DELAY     200   // default idle speed (Golem 4 frames)
+#define IDLE_GORGON_DELAY   280   // Gorgon 5 frames — slower for readable animation
 #define IDLE_FAST_DELAY     120   // excited
 #define IDLE_SLOW_DELAY     280   // bored / sick
 

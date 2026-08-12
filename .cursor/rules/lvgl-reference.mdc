@@ -1,0 +1,22 @@
+---
+description: Справочник LVGL для TamaFi — виджеты, API, ссылки на документацию
+globs: TamaFi/lvgl*.cpp,TamaFi/lvgl*.h,TamaFi/ui*.cpp,TamaFi/ui*.h
+alwaysApply: false
+---
+
+# LVGL в проекте TamaFi
+
+При работе с LVGL-кодом (меню, настройки, экраны) **обязательно** обращаться к справочнику:
+
+**Файл:** `Migration/LVGL_DOCS_SUMMARY.md`
+
+В нём:
+- Описание виджетов (List, Button, Label, Slider, Dropdown и др.)
+- Прямые ссылки на документацию LVGL (docs.lvgl.io/master/...)
+- API v8 (проект использует LVGL v8)
+- Input devices, скролл, стили, события
+
+**Использование:**
+1. Читать LVGL_DOCS_SUMMARY.md при вопросах по LVGL
+2. Переходить по ссылкам в документацию для деталей
+3. Учитывать v8 API: `lv_list_add_btn`, `lv_scr_load`, `lv_disp_drv_t` и т.д.

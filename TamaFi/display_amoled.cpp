@@ -346,13 +346,13 @@ void flushContentAndDrawControlBar() {
   // Возраст над панелью UP/OK/DOWN, на траве (низ контента)
   if (currentScreen == SCREEN_HOME) {
     char buf[24];
-    snprintf(buf, sizeof(buf), "%3luд %2luч %2luм",
+    snprintf(buf, sizeof(buf), "%3lud %2luh %2lum",
              (unsigned long)petState.pet.ageDays,
              (unsigned long)petState.pet.ageHours,
              (unsigned long)petState.pet.ageMinutes);
     Arduino_GFX* gfx = realGfx;
     if (gfx) {
-      gfx->setFont(u8g2_font_6x13_t_cyrillic);
+      gfx->setFont(u8g2_font_6x13_tf);
       gfx->setTextColor(TFT_BLACK);  // на траве
       gfx->setUTF8Print(true);
       gfx->setCursor(12, CONTENT_H - 10);  // над панелью, на траве
@@ -378,6 +378,43 @@ void drawSpriteToContent(int x, int y, int w, int h, const uint16_t* buffer, uin
       uint16_t c16 = buffer[j * w + i];
       if (c16 != transparentColor)
         c->drawPixel(x + i, y + j, c16);
+    }
+  }
+}
+
+void drawSpriteToContentScaled(int dstX, int dstY, int dstW, int dstH,
+    const uint16_t* src, int srcW, int srcH, uint16_t transparentColor) {
+  if (dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0) return;
+  Arduino_GFX* c = getContentCanvas();
+  for (int dy = 0; dy < dstH; dy++) {
+    int sy = (dy * srcH) / dstH;
+    for (int dx = 0; dx < dstW; dx++) {
+      int sx = (dx * srcW) / dstW;
+      uint16_t c16 = pgm_read_word(src + sy * srcW + sx);
+      if (c16 != transparentColor)
+        c->drawPixel(dstX + dx, dstY + dy, c16);
+    }
+  }
+}
+
+// Draw frame from horizontal sprite sheet (frames side-by-side). PROGMEM.
+// sheetW x sheetH = full sheet; frameIndex 0..N-1; frameW x frameH = one frame.
+void drawSpriteSheetFrameToContentScaled(int dstX, int dstY, int dstW, int dstH,
+    const uint16_t* sheet, int sheetW, int sheetH, int frameIndex, int frameW, int frameH,
+    uint16_t transparentColor) {
+  if (dstW <= 0 || dstH <= 0 || sheetW <= 0 || sheetH <= 0 || frameW <= 0 || frameH <= 0) return;
+  int frameCol = frameIndex * frameW;
+  if (frameCol + frameW > sheetW) return;
+  Arduino_GFX* c = getContentCanvas();
+  for (int dy = 0; dy < dstH; dy++) {
+    int sy = (dy * frameH) / dstH;
+    for (int dx = 0; dx < dstW; dx++) {
+      int sx = (dx * frameW) / dstW;
+      int col = frameCol + sx;
+      int row = sy;
+      uint16_t c16 = pgm_read_word(sheet + (size_t)row * sheetW + col);
+      if (c16 != transparentColor)
+        c->drawPixel(dstX + dx, dstY + dy, c16);
     }
   }
 }

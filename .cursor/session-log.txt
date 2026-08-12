@@ -128,3 +128,616 @@
 
 ### Важно на будущее
 - Масштаб сохраняется в NVS (ключ petScale)
+
+---
+Дата: 2025-02-22
+---
+
+### Краткое описание сессии
+Создан план переработки скина питомца и UI игрового экрана в Migration.
+
+### Обсуждённое
+- Необходимость плана с перечнем ресурсов, анимаций, кадров/спрайтов
+- Пользователь не знаком с терминологией — добавлен глоссарий
+
+### Внесённые изменения
+- Migration/PET_SKIN_AND_UI_REWORK.md: создан план (глоссарий, структура скина, анимации, UI, чек-листы, инструменты)
+
+---
+Дата: 2025-02-22
+---
+
+### Краткое описание сессии
+Обновлён план PET_SKIN_AND_UI_REWORK: фазы «сначала в памяти, потом SD», нативное разрешение.
+
+### Обсуждённое
+- Нативное разрешение 368×368 — памяти хватает (PSRAM 8 МБ)
+- SD card — загрузка скина в PSRAM при старте, не чтение на каждый кадр
+- Решение: Фаза 1 — всё в памяти (Flash/PSRAM), Фаза 2 — чтение из SD (позже)
+
+### Внесённые изменения
+- Migration/PET_SKIN_AND_UI_REWORK.md: раздел 8 «Фазы реализации», раздел 9 «Порядок работ», нативное 368×368, спрайты 176×169, абстракция getSpriteFrame()
+
+### Важно на будущее
+- При реализации Фазы 1 заложить getSpriteFrame(skinId, animType, frameIndex) для лёгкого добавления SD
+
+---
+Дата: 2025-02-22
+---
+
+### Краткое описание сессии
+Добавлена информация про AI-инструменты в PET_SKIN_AND_UI_REWORK.md.
+
+### Внесённые изменения
+- Migration/PET_SKIN_AND_UI_REWORK.md: раздел «AI-инструменты», таблица инструментов, промпты, площадки готовых ассетов
+- Migration/PET_SKIN_AND_UI_REWORK.md: добавлены ограничения бесплатных версий AI-инструментов (Perchance без лимитов, AutoSprite 3/день, PixelLab free 128×128 и т.д.)
+- Migration/PET_SKIN_AND_UI_REWORK.md: раздел «Рекомендуемый стек для TamaFi» — таблица анимация→инструмент→как использовать
+- Migration/PET_SKIN_AND_UI_REWORK.md: раздел «Порядок использования инструментов» — пошаговая схема (Шаг 1→7) с инструментами и стрелками
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Реализован план «Скин Gorgon на базе Golem»: два скина (Gorgon=0, Golem=1), инкапсуляция, поддержка произвольного разрешения со скейлом.
+
+### Обсуждённое
+- Gorgon по умолчанию (petSkin=0), Golem=1. Dragon и Other убраны.
+- Плоская структура файлов скинов (skin_*.h в корне TamaFi/) для совместимости с Arduino.
+- Дескриптор SkinDescriptor, реестр в skin_registry.cpp, getter'ы в skin_assets.h.
+
+### Внесённые изменения
+- TamaFi/skin_types.h: SkinDescriptor, SKIN_COUNT, SKIN_GORGON, SKIN_GOLEM
+- TamaFi/skin_golem.h: дескриптор skinGolem (StoneGolem, egg_hatch, effect)
+- TamaFi/skin_gorgon.h: дескриптор skinGorgon (пока алиасы на Golem)
+- TamaFi/skin_registry.cpp: реестр, реализация getter'ов
+- TamaFi/skin_assets.h: публичный API
+- TamaFi/navigation.h, navigation.cpp: petSkin 0..1, цикл % 2, комментарии Gorgon/Golem
+- TamaFi/ui_menu.cpp: petSkinText — Gorgon, Golem
+- TamaFi/persistence.cpp: clamp petSkin при загрузке (если > 1 → 0)
+- TamaFi/ui.cpp: navigation.h, skin_assets.h; убраны StoneGolem/egg_hatch/effect; все отрисовки через skin getter'ы; drawPetFrame, drawEffectFrame с поддержкой скейла
+- TamaFi/display_amoled.h, display_amoled.cpp: drawSpriteToContentScaled (nearest-neighbour, PROGMEM)
+- TamaFi/GorgonIdle.h: заглушка под будущие gorgon_idle_1..5
+
+### Важно на будущее
+- Конвертация Idle_2.png в C-массивы и подключение в GorgonIdle.h — отдельный шаг.
+- При добавлении Gorgon idle с 5 кадрами — обновить skin_gorgon.h (idleFrames, idleFrameCount=5).
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Исправлены Gorgon Idle_2: вертикальное растяжение и слишком быстрая смена кадров.
+
+### Обсуждённое
+- Спрайт-лист 640×128: кадры расположены горизонтально (row-major), а не последовательно. Указатели gorgon_idle_2 + N*16384 были неверны.
+- Добавлена drawSpriteSheetFrameToContentScaled для чтения кадра из горизонтального спрайт-листа.
+- Задержка Gorgon: IDLE_GORGON_DELAY 280 ms (вместо 200).
+
+### Внесённые изменения
+- TamaFi/skin_types.h: idleSpriteSheet, idleSheetW, idleSheetH в SkinDescriptor
+- TamaFi/skin_gorgon.h: idleSpriteSheet=gorgon_idle_2, idleSheetW=640, idleSheetH=128; GORGON_IDLE={nullptr}
+- TamaFi/display_amoled.h, .cpp: drawSpriteSheetFrameToContentScaled
+- TamaFi/skin_assets.h, skin_registry.cpp: skinUsesIdleSpriteSheet, skinGetIdleSpriteSheet
+- TamaFi/ui.cpp: ветвление — при sprite sheet вызывать drawSpriteSheetFrameToContentScaled
+- TamaFi/ui_anim.h: IDLE_GORGON_DELAY 280
+
+### Важно на будущее
+- Спрайт-листы с горизонтальным layout: использовать drawSpriteSheetFrameToContentScaled, не указатели на смещения.
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Реализована замена idle Gorgon на Idle_2 (5 кадров из спрайт-листа). Использован запасной вариант: указатели на смещения в gorgon_idle_2[] + drawSpriteToContentScaled.
+
+### Обсуждённое
+- План Gorgon Idle_2: image2cpp (Этап 1), Arduino_Sprite (Этап 2) — выполнены пользователем.
+- Этап 3–5: интеграция, реестр, тестирование.
+
+### Внесённые изменения
+- TamaFi/skin_registry.cpp: #include "GorgonIdle.h" (после effect.h)
+- TamaFi/skin_gorgon.h: GORGON_IDLE — 5 указателей на смещения в gorgon_idle_2 (0, 16384, 32768, 49152, 65536); idleFrameCount=5; petFrameW=128, petFrameH=128; extern gorgon_idle_2
+
+### Важно на будущее
+- Проверить на устройстве: Gorgon idle — 5 кадров, прозрачность, масштаб 128×128→115×110.
+- Arduino_Sprite не использован — применён запасной вариант (drawPetFrame + drawSpriteToContentScaled).
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Разделение кода отрисовки: для Gorgon — новый путь (idle из спрайт-листа), для attack/dead/egg — legacy-размеры 115×110 (ассеты Golem).
+
+### Обсуждённое
+- При смене Gorgon на attack/dead/egg анимация бралась от Golem, но рисовалась с неверными размерами (128×128 вместо 115×110).
+- Решение: legacyPetFrameW/H в дескрипторе; drawPetFrame(useLegacySize) — для legacy-анимаций использовать skinGetPetFrameSizeForLegacy.
+
+### Внесённые изменения
+- TamaFi/skin_types.h: legacyPetFrameW, legacyPetFrameH в SkinDescriptor
+- TamaFi/skin_gorgon.h: legacyPetFrameW=115, legacyPetFrameH=110
+- TamaFi/skin_golem.h: legacyPetFrameW=0, legacyPetFrameH=0
+- TamaFi/skin_assets.h, skin_registry.cpp: skinGetPetFrameSizeForLegacy
+- TamaFi/ui.cpp: drawPetFrame(x, y, frame, useLegacySize); вызовы с true для egg/attack/dead/rest, false для idle
+
+### Важно на будущее
+- Gorgon idle — drawSpriteSheetFrameToContentScaled (спрайт-лист). Gorgon attack/dead/egg — drawSpriteToContentScaled с 115×110. Golem — старый путь (copyProgmemToPet).
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Пропорциональное масштабирование для Gorgon: petDisplayScale 120% — питомец рисуется больше по ширине и высоте.
+
+### Обсуждённое
+- Gorgon должен отображаться крупнее Golem. Добавлен petDisplayScale в SkinDescriptor.
+
+### Внесённые изменения
+- TamaFi/skin_types.h: petDisplayScale в SkinDescriptor (100 = default, 120 = 1.2x)
+- TamaFi/skin_gorgon.h: petDisplayScale = 120
+- TamaFi/skin_golem.h: petDisplayScale = 0 (100%)
+- TamaFi/skin_assets.h, skin_registry.cpp: skinGetPetDisplayScale
+- TamaFi/ui.cpp: getPetDrawRect(baseX, baseY, &x, &y, &w, &h); drawPetFrame с dstW, dstH; все вызовы через getPetDrawRect
+
+### Важно на будущее
+- Масштаб 120% — центр питомца сохраняется. Для изменения размера — править petDisplayScale в skin_gorgon.h.
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Интеграция LVGL v8 для экрана «Настройки». Экран настроек рисуется через lv_list, навигация UP/DOWN/OK через control strip.
+
+### Обсуждённое
+- LVGL v8.4, Arduino IDE, только список без шапки (время/батарея не рисуются на LVGL-экране)
+- Латиница для POC (Yarkost, Zvuk, Skin, Back и т.д.)
+- LVGL рисует область 368×368, control bar (UP/OK/DOWN) остаётся без изменений
+
+### Внесённые изменения
+- TamaFi/lv_conf.h: конфигурация LVGL (скачан шаблон v8.3, #if 1)
+- TamaFi/lvgl_settings.h, lvgl_settings.cpp: модуль интеграции (init, show, hide, sync, tick)
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingsValue(int index) — экспорт для LVGL
+- TamaFi/ui.cpp: SCREEN_SETTINGS → lvglSettingsShow/Sync; uiOnScreenChange → lvglSettingsHide
+- TamaFi/TamaFi.ino: lvglSettingsInit() после displayAmoledInit, lvglSettingsTick() после uiDrawScreen
+
+### Важно на будущее
+- Установить LVGL v8.4.x через Arduino Library Manager (Sketch → Include Library → Manage Libraries → «lvgl»)
+- lv_conf.h в TamaFi/ — LVGL ищет его при LV_CONF_INCLUDE_SIMPLE (определено в lvgl_settings.cpp)
+- При ошибках сборки проверить версию LVGL (должна быть v8.x, не v9)
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Реализован план «Единый стиль меню и миграция на LVGL»: все меню и инфо-экраны переведены на LVGL с общим стилем.
+
+### Обсуждённое
+- Спецификация MENU_STYLE_SPEC.md: чёрный фон, светло-серые пункты, чёрный текст
+- Вариант A для шапки: drawHeaderToDisplay на дисплее, LVGL рисует ниже (y offset 18px)
+- Общий модуль lvgl_menu_common для стилей
+
+### Внесённые изменения
+- Migration/MENU_STYLE_SPEC.md: спецификация цветов и типов экранов
+- TamaFi/lvgl_menu_common.h, .cpp: константы стилей, lvglApplyListItemStyle
+- TamaFi/ui_common.h, .cpp: drawHeaderToDisplay для LVGL-экранов
+- TamaFi/device_config.h: LVGL_HEADER_H 18
+- TamaFi/lvgl_settings.cpp: рефакторинг под общие стили, шапка, offset в flush, русские подписи
+- TamaFi/lvgl_main_menu.h, .cpp: LVGL-экран «Меню» (4 пункта)
+- TamaFi/lvgl_pet_status.h, .cpp: LVGL-экран «Статус питомца»
+- TamaFi/lvgl_sysinfo.h, .cpp: LVGL-экран «Система»
+- TamaFi/ui.cpp: SCREEN_MENU/PET_STATUS/SYSINFO/SETTINGS → LVGL, hide при смене экрана
+- TamaFi/ui_menu.cpp: удалены drawMenuList, screenMenu, screenSettings; оставлены uiMenuGetSettingsValue, заглушки OnScreenChange/UpdateHighlightTarget
+- TamaFi/ui_menu.h: удалены screenMenu, screenSettings
+- TamaFi/TamaFi.ino: lvglMainMenuInit, lvglPetStatusInit, lvglSysInfoInit; lvgl*Tick в loop
+
+### Важно на будущее
+- Проверить сборку и работу на устройстве
+- При нехватке памяти рассмотреть создание/уничтожение LVGL-экранов по требованию
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Интерфейс по умолчанию переведён на английский. Шрифт заменён на латинский (u8g2_font_6x13_tf) — без квадратиков-глифов.
+
+### Обсуждённое
+- Пока нет русского шрифта — вместо букв отображались квадратики-глифы
+- Решение: запускать игру с английским языком по умолчанию
+
+### Внесённые изменения
+- Все строки UI уже были на английском (меню, настройки, статус, система, boot, hatch, game over)
+- Шрифт u8g2_font_6x13_t_cyrillic → u8g2_font_6x13_tf (Latin) в ui.cpp, ui_common.cpp, display_amoled.cpp
+- Формат возраста: d h m вместо д ч м (display_amoled.cpp)
+
+### Важно на будущее
+- При добавлении русского шрифта можно вернуть локализацию
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Интерфейс переведён на английский по умолчанию. Шрифт заменён на латинский (u8g2_font_6x13_tf) — без квадратиков-глифов.
+
+### Обсуждённое
+- Пока нет русского шрифта — вместо букв отображались квадратики-глифы
+- Решение: запускать игру с английским языком по умолчанию
+
+### Внесённые изменения
+- TamaFi/lvgl_main_menu.cpp: ITEMS и header на английском (Status, System, Settings, Back, Menu)
+- TamaFi/lvgl_settings.cpp: LABELS и header на английском (Brightness, Sound, Skin и т.д., Settings)
+- TamaFi/ui_menu.cpp: uiMenuGetSettingsValue — Low/Mid/High, Off, 30s/60s/120s, s
+- TamaFi/lvgl_pet_status.cpp: moodStr, stageStr, buildRows, header на английском (Pet Status)
+- TamaFi/lvgl_sysinfo.cpp: buildRows, header на английском (System)
+- TamaFi/display_amoled.cpp: формат возраста %3lud %2luh %2lum (d h m)
+- TamaFi/ui.cpp, ui_common.cpp, display_amoled.cpp: шрифт u8g2_font_6x13_t_cyrillic → u8g2_font_6x13_tf (Latin)
+- TamaFi/ui_info.h: комментарий об использовании Latin-шрифта
+
+### Важно на будущее
+- При появлении русского шрифта можно добавить переключение языка
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Интерфейс переведён на английский по умолчанию. Шрифт заменён на латинский (u8g2_font_6x13_tf) — без квадратиков-глифов.
+
+### Обсуждённое
+- Пока нет русского шрифта — вместо букв отображались квадратики. Решение: английский UI по умолчанию.
+
+### Внесённые изменения
+- Все строки UI уже были на английском (меню, настройки, статус, система, boot, hatch, game over)
+- Шрифт u8g2_font_6x13_t_cyrillic → u8g2_font_6x13_tf (Latin) в ui.cpp, ui_common.cpp, display_amoled.cpp, ui_info.h
+- Формат возраста: d h m (вместо д ч м) в display_amoled.cpp
+
+### Важно на будущее
+- Для русского UI потребуется шрифт с поддержкой кириллицы (U8g2 или LVGL)
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Интерфейс переведён на английский по умолчанию. Шрифт заменён на латинский — без квадратиков-глифов.
+
+### Обсуждённое
+- Пока нет русского шрифта — вместо букв квадратики. Решение: запускать игру с английским языком по умолчанию.
+
+### Внесённые изменения
+- TamaFi/lvgl_main_menu.cpp: ITEMS и header на английском (Status, System, Settings, Back, Menu)
+- TamaFi/lvgl_settings.cpp: LABELS и header на английском (Brightness, Sound, Skin и т.д., Settings)
+- TamaFi/ui_menu.cpp: uiMenuGetSettingsValue — Low/Mid/High, Off, 30s/60s/120s, s
+- TamaFi/lvgl_pet_status.cpp: moodStr, stageStr, buildRows, header на английском (Pet Status)
+- TamaFi/lvgl_sysinfo.cpp: buildRows, header на английском (System)
+- TamaFi/display_amoled.cpp: формат возраста %3lud %2luh %2lum (d h m)
+- TamaFi/ui.cpp, ui_common.cpp, display_amoled.cpp: шрифт u8g2_font_6x13_t_cyrillic → u8g2_font_6x13_tf (Latin)
+- TamaFi/ui_info.h: комментарий про Latin-шрифт
+
+### Важно на будущее
+- При добавлении русского шрифта можно вернуть локализацию (RU/EN переключатель).
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Реализован план «Переход меню на стандартные LVGL-компоненты (база)»: дефолтные стили, тёмная тема, текст вместо кнопок для Pet Status и System Info.
+
+### Обсуждённое
+- Убрать кастомные серые стили (lvglApplyListItemStyle), использовать дефолтную тему
+- Тёмная тема (LV_THEME_DEFAULT_DARK 1), чёрный фон экрана
+- Pet Status и System Info: lv_list_add_text вместо lv_list_add_btn — только текст со скроллом
+- Удалить кастомные размеры/отступы (set_size, center, pad_row, max_height)
+
+### Внесённые изменения
+- TamaFi/lv_conf.h: LV_THEME_DEFAULT_DARK 1
+- TamaFi/lvgl_main_menu.cpp: убраны lvgl_menu_common, lvglApplyListItemStyle, кастомные размеры/отступы
+- TamaFi/lvgl_settings.cpp: то же
+- TamaFi/lvgl_pet_status.cpp: lv_list_add_text вместо lv_list_add_btn, rowLabels[], убраны кнопки и кастомные стили
+- TamaFi/lvgl_sysinfo.cpp: то же для System Info
+- lvgl_menu_common оставлен (Вариант A) для будущей стилизации
+
+### Важно на будущее
+- Проверить на устройстве: отображение списков с дефолтными размерами, скролл
+- При необходимости стилизации — вернуть lvglApplyListItemStyle или добавить кастомные стили
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Создан справочник LVGL и правило Cursor для работы с LVGL в проекте.
+
+### Обсуждённое
+- Изучение документации LVGL (docs.lvgl.io/master)
+- Необходимость справочника с виджетами и ссылками для AI-ассистента
+- Обновление правил Cursor для использования справочника при работе с LVGL
+
+### Внесённые изменения
+- Migration/LVGL_DOCS_SUMMARY.md: справочник LVGL (основы, виджеты с ссылками, input, скролл, стили, события, API v8)
+- .cursor/rules/lvgl-reference.mdc: правило — при работе с LVGL обращаться к LVGL_DOCS_SUMMARY.md и ссылкам
+
+### Важно на будущее
+- LVGL_DOCS_SUMMARY.md — основной справочник при работе с LVGL в TamaFi. Ссылки ведут в официальную документацию.
+
+---
+Дата: 2025-03-08
+---
+
+### Краткое описание сессии
+Создан обзор пунктов меню Tools в Arduino IDE для целевой платы WAVESHARE_ESP32_S3_1.8_AMOLED.
+
+### Обсуждённое
+- Пользователь запросил обзор по пунктам меню Tools в Arduino IDE в папке Migration
+
+### Внесённые изменения
+- Migration/ARDUINO_TOOLS_MENU.md: создан документ с обзором Board, Port, USB CDC On Boot, USB Mode, Flash, PSRAM, CPU Frequency и др.
+- Migration/README.md: добавлена ссылка на ARDUINO_TOOLS_MENU.md
+
+### Важно на будущее
+- ARDUINO_TOOLS_MENU.md — справочник при настройке Arduino IDE для сборки TamaFi
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0-5), lv_msgbox для Reset pet/all, touch + UP/DOWN/OK.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для настроек с несколькими вариантами — модальное окно выбора; для Reset — диалог подтверждения
+- Touch: тап по строке открывает picker/msgbox
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.h, lvgl_settings.cpp: lvglSettingsHandleOk, modal picker, lv_msgbox (Reset pet/all), click handlers, LVGL indev для touch
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings вызывает lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: touch по строкам Settings, picker, msgbox, UP/DOWN/OK
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0-5), lv_msgbox для Reset pet/all, touch + UP/DOWN/OK.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для настроек с вариантами — модальное окно выбора; для Reset — диалог подтверждения
+- Touch в content area для LVGL (inputGetTouchState, indev)
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL indev
+- TamaFi/lvgl_settings.cpp: modal picker (0-5), lv_msgbox (6-7), listBtnClickCb, indev для тача
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/navigation.cpp: OK на Settings вызывает lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: picker, msgbox, touch по строкам
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Реализован план LVGL UI: Settings с модальным выбором настроек (0-5), диалог подтверждения для Reset pet/all (6-7), touch + UP/DOWN/OK.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для настроек с вариантами (0-5) — модальное окно выбора; для Reset (6-7) — lv_msgbox с Yes/No
+- Touch: тап по строке открывает picker/msgbox; LVGL indev для content area
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.cpp: modal picker (showPickerModal), lv_msgbox (Reset pet/all), listBtnClickCb, LVGL indev, lvglSettingsHandleOk
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings вызывает lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: touch по строкам Settings, модальный picker, msgbox Yes/No
+- При проблемах с overlay в picker — проверить иерархию parent (btn->list->overlay)
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0-5), lv_msgbox для Reset pet/all, touch + UP/DOWN/OK.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для настроек с несколькими вариантами — модальное окно выбора; для Reset — диалог подтверждения
+- Touch: тап по строке открывает picker/msgbox
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.cpp: LVGL indev для touch, click handlers на list buttons, showPickerModal (0-5), showResetMsgbox (6-7), lvglSettingsHandleOk
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings вызывает lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: touch по строкам Settings, модальный picker, msgbox Yes/No
+- LVGL 8 API: lv_msgbox_create, lv_btnmatrix_get_selected_btn — при обновлении LVGL проверить совместимость
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0–5), lv_msgbox для Reset pet/all, touch + UP/DOWN/OK.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для настроек с несколькими вариантами — модальное окно выбора; для Reset — диалог подтверждения
+- Touch: тап по строке открывает picker/msgbox; LVGL indev для content area
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.cpp: modal picker (0–5), lv_msgbox (6–7), listBtnClickCb, LVGL indev, lvglSettingsHandleOk
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings → lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: picker, msgbox, touch по строкам
+- При проблемах с overlay в picker — проверить иерархию parent (btn→list→overlay)
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0–5), lv_msgbox для Reset pet/all, touch + UP/DOWN/OK.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для пунктов 0–5 — модальное окно выбора; для Reset pet/all — диалог подтверждения
+- Touch: тап по строке открывает picker/msgbox; LVGL indev для content area
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.cpp: indev (touch), listBtnClickCb, showPickerModal, showResetMsgbox, lvglSettingsHandleOk
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings → lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: picker, msgbox, touch по строкам
+- При проблемах с overlay в picker — проверить lv_obj_get_parent (структура lv_list)
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0–5), lv_msgbox для Reset pet/all, touch на строках.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для пунктов 0–5 — модальное окно выбора; для Reset pet/all — диалог подтверждения
+- Touch: тап по строке открывает picker/msgbox; UP/DOWN/OK — навигация
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/lvgl_settings.cpp: LVGL indev для touch, click handlers на list buttons, showPickerModal (0–5), showResetMsgbox (6–7), lvglSettingsHandleOk
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings вызывает lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: touch по строкам Settings, модальный picker, msgbox Yes/No
+- LVGL 8 API: lv_msgbox_create, lv_btnmatrix_get_selected_btn — при обновлении LVGL проверить совместимость
+
+---
+Дата: 2025-03-07
+---
+
+### Краткое описание сессии
+Settings: модальный picker для настроек с вариантами (0–5), lv_msgbox для Reset pet/all, touch на строках.
+
+### Обсуждённое
+- Pet Status, System Info — только текст (уже было)
+- Main Menu — кнопки (уже было)
+- Settings — кнопки; для пунктов 0–5 — модальное окно выбора; для Reset pet/all — диалог подтверждения
+- Touch: тап по строке открывает picker/msgbox; LVGL indev для content area
+
+### Внесённые изменения
+- TamaFi/ui_menu.h, ui_menu.cpp: uiMenuGetSettingOptionsCount, uiMenuGetSettingOptionLabel, uiMenuApplySetting
+- TamaFi/input.h, input.cpp: inputGetTouchState для LVGL (touch в content area)
+- TamaFi/lvgl_settings.cpp: LVGL indev (touch), listBtnClickCb, showPickerModal, showResetMsgbox, lvglSettingsHandleOk
+- TamaFi/lvgl_settings.h: lvglSettingsHandleOk
+- TamaFi/navigation.cpp: include lvgl_settings.h, OK на Settings вызывает lvglSettingsHandleOk вместо cycling
+
+### Важно на будущее
+- Проверить на устройстве: picker, msgbox, touch по строкам
+- При проблемах с overlay в picker — проверить иерархию parent (lv_obj_get_parent)
+
+---
+Дата: 2026-03-08
+---
+
+### Краткое описание сессии
+Аудит и полный рефакторинг LVGL-части меню: вынесена инициализация в lvgl_core, устранено дублирование Tick-функций, исправлен хрупкий picker.
+
+### Обсуждённое
+- Аудит выявил 8 проблем: скрытая зависимость init, 4 одинаковых Tick, дублированный switch навигации, неиспользуемый lvgl_menu_common, хрупкий picker (parent traversal), extern внутри функции, дублированный LVGL_SCR_W, пустые Hide-функции
+- Обсудили архитектуру: один lvgl_core.cpp отвечает за инфраструктуру, экраны только за виджеты
+
+### Внесённые изменения
+- TamaFi/lvgl_core.cpp, lvgl_core.h: новый файл — lv_init, driver, touch, ESP timer, lvglCoreInit(), lvglCoreTick(Screen)
+- TamaFi/navigation.cpp, navigation.h: добавлен navMainMenuExecute(idx) — единственное место с логикой пунктов меню
+- TamaFi/lvgl_main_menu.cpp, .h: убраны Tick/Hide, переименован Init→Build, callback→navMainMenuExecute, стили применяются
+- TamaFi/lvgl_settings.cpp, .h: убраны LVGL init/Tick, переименован Init→Build, picker починен (user_data вместо parent traversal), extern PetState перенесён на file scope, стили применяются
+- TamaFi/lvgl_pet_status.cpp, .h: убраны Tick/Hide, переименован Init→Build, упрощён (убраны лишние ROW_COUNT/пустые строки), стили применяются
+- TamaFi/lvgl_sysinfo.cpp, .h: убраны Tick/Hide, переименован Init→Build, buildRows() теперь возвращает int вместо side-effect, стили применяются
+- TamaFi/ui.cpp: убраны вызовы Hide(), Show+Sync для LVGL-экранов перенесены в uiOnScreenChange (при переходе) и lvglCoreTick (каждый кадр)
+- TamaFi/TamaFi.ino: setup использует lvglCoreInit + Build-функции; loop вызывает lvglCoreTick один раз
+
+### Важно на будущее
+- Проверить на устройстве: все переходы между экранами, picker, msgbox, навигация кнопками
+- lvglApplyListItemStyle теперь реально применяется — проверить внешний вид (цвета серый bg, чёрный текст)
+
+---
+Дата: 2026-03-08
+---
+
+### Краткое описание сессии
+Реализована LVGL-панель статуса (header bar 36px) на всех экранах меню. LVGL теперь управляет полным viewport'ом 368×368px — header больше не рисуется через Arduino GFX.
+
+### Обсуждённое
+- Высота панели: 36px (две строки по ощущению, одна строка с комфортным размером)
+- Содержимое: Mood питомца (слева), время HH:MM (по центру), заряд батареи % (справа)
+- Заголовок экрана не нужен — панель одинакова на всех экранах
+
+### Внесённые изменения
+- TamaFi/device_config.h: LVGL_HEADER_H 18 → 36
+- TamaFi/lvgl_menu_common.h: добавлен struct LvglHeader, объявления lvglBuildHeader, lvglSyncHeader, lvglMoodStr
+- TamaFi/lvgl_menu_common.cpp: реализованы lvglBuildHeader (36px чёрная панель с cyan-разделителем, 3 label), lvglSyncHeader (mood + time + battery), lvglMoodStr (заменяет локальный moodStr из pet_status)
+- TamaFi/lvgl_core.cpp: LVGL_SCR_H = CONTENT_H (368), убран y-offset (+LVGL_HEADER_H) из myDispFlush, убран y-offset (-LVGL_HEADER_H) из indevReadCb, убраны drawHeaderToDisplay() из lvglCoreTick, убран #include "ui_common.h"
+- TamaFi/lvgl_main_menu.cpp: добавлен s_header, lvglBuildHeader в Build, pad_all=0 на screen, список сдвинут вниз на LVGL_HEADER_H, lvglSyncHeader в Sync
+- TamaFi/lvgl_settings.cpp: аналогично + picker overlay теперь позиционируется с pos.y = LVGL_HEADER_H
+- TamaFi/lvgl_pet_status.cpp: аналогично + убран локальный moodStr, заменён на lvglMoodStr
+- TamaFi/lvgl_sysinfo.cpp: аналогично
+
+### Важно на будущее
+- Проверить на устройстве: header отображается корректно, время/батарея/mood обновляются каждый кадр
+- При открытии picker-оверлея заголовок остаётся видным (оверлей начинается с y=LVGL_HEADER_H)
+
+### Исправлен баг: игровое поле просвечивает сквозь меню (после нескольких открываний)
+Причина: LVGL хранит "активный экран" внутри. При выходе из MENU на HOME lv_scr_load не вызывается ни на что — LVGL считает mainMenuScreen по-прежнему активным. Игровой canvas тем временем перезаписывает пиксели дисплея. При возврате на MENU: lv_scr_load(mainMenuScreen) видит old_scr == new_scr и выходит без инвалидации → lv_timer_handler не перерисовывает ничего → игровые пиксели остаются.
+Фикс: в lvglCoreTick при смене экрана (screenJustChanged) принудительно вызываем lv_obj_invalidate(lv_scr_act()) перед lv_timer_handler.
+
+### Исправлены баги с picker-модальным окном в настройках
+1. Нельзя было выбрать вариант через UP/DOWN/OK: navigation.cpp всегда навигировал основной список настроек, не зная что открыт модальный оверлей.
+   Фикс: добавлены lvglSettingsIsModalOpen() и lvglSettingsModalInput(btn). В навигации при SCREEN_SETTINGS — сначала проверка IsModalOpen(), и если открыт — перехват ввода.
+2. Многократное наложение масок: каждый нажатый OK создавал новый overlay без защиты.
+   Фикс: s_pickerOverlay и s_msgboxActive проверяются в начале showPickerModal/showResetMsgbox, повторное открытие блокируется.
+   Бонус: пикер теперь открывается с pre-selected текущим значением настройки.
+
+### Исправлены размеры списков (высота и ширина)
+Все 4 списка (settings, main_menu, pet_status, sysinfo) не имели явной высоты — LVGL использовал дефолт ~100px, часть пунктов обрезалась.
+Фикс: lv_obj_set_size(list, LV_PCT(100), CONTENT_H - LVGL_HEADER_H) — полная ширина и 350px высота (весь LVGL-viewport).
+Список пикера: LV_PCT(80) × LV_PCT(80) — центрированное модальное окно.
+Добавлен #include "device_config.h" в lvgl_main_menu.cpp и lvgl_pet_status.cpp.

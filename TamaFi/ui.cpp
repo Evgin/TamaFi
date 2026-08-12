@@ -7,6 +7,10 @@
 #include "ui_common.h"
 #include "ui_menu.h"
 #include "ui_info.h"
+#include "lvgl_settings.h"
+#include "lvgl_main_menu.h"
+#include "lvgl_pet_status.h"
+#include "lvgl_sysinfo.h"
 #include "ui_anim.h"
 #include "sound.h"              // sndHatch (hatch animation)
 #include "wifi_service.h"       // wifiStats, wifiList, wifiScanInProgress
@@ -16,9 +20,8 @@
 #include <U8g2lib.h>
 
 // Graphics headers
-#include "StoneGolem.h"
-#include "egg_hatch.h"
-#include "effect.h"
+#include "navigation.h"   // petSkin
+#include "skin_assets.h"
 #include "background.h"
 
 int petPosX = 120;
@@ -35,34 +38,6 @@ static const int EFFECT_H = 95;
 static int huntFrame = 0;
 static unsigned long lastHuntFrameTime = 0;
 static const int HUNT_FRAME_DELAY = 300;
-
-// Idle sprite sets per stage (placeholder: same for all)
-static const uint16_t* BABY_IDLE_FRAMES[4]  = { idle_1, idle_2, idle_3, idle_4 };
-static const uint16_t* TEEN_IDLE_FRAMES[4]  = { idle_1, idle_2, idle_3, idle_4 };
-static const uint16_t* ADULT_IDLE_FRAMES[4] = { idle_1, idle_2, idle_3, idle_4 };
-static const uint16_t* ELDER_IDLE_FRAMES[4] = { idle_1, idle_2, idle_3, idle_4 };
-
-// Egg frames
-static const uint16_t* EGG_FRAMES[5] = {
-    egg_hatch_1, egg_hatch_2, egg_hatch_3, egg_hatch_4, egg_hatch_5
-};
-
-static const uint16_t* EGG_IDLE_FRAMES[4] = {
-    egg_hatch_11, egg_hatch_21, egg_hatch_31, egg_hatch_41
-};
-
-static const uint16_t* HUNGER_FRAMES[4] = {
-    hunger1, hunger2, hunger3, hunger4
-};
-
-static const uint16_t* DEAD_FRAMES[3] = {
-    dead_1, dead_2, dead_3
-};
-
-// HUNTING animation loop
-static const uint16_t* ATTACK_FRAMES[3] = {
-    attack_0, attack_1, attack_2
-};
 
 // Sprite buffers
 #define PET_BUF_SIZE   (115 * 110)
@@ -101,33 +76,33 @@ static unsigned long lastDeadFrameUi = 0;
 
 static const char* moodTextLocal(Mood m) {
     switch (m) {
-        case MOOD_HUNGRY:  return "Голодный";
-        case MOOD_HAPPY:   return "Счастлив";
-        case MOOD_CURIOUS: return "Любопытный";
-        case MOOD_BORED:   return "Скучает";
-        case MOOD_SICK:    return "Болен";
-        case MOOD_EXCITED: return "Возбуждён";
-        case MOOD_CALM:    return "Спокоен";
+        case MOOD_HUNGRY:  return "Hungry";
+        case MOOD_HAPPY:   return "Happy";
+        case MOOD_CURIOUS: return "Curious";
+        case MOOD_BORED:   return "Bored";
+        case MOOD_SICK:    return "Sick";
+        case MOOD_EXCITED: return "Excited";
+        case MOOD_CALM:    return "Calm";
     }
     return "?";
 }
 
 static const char* stageTextLocal(Stage s) {
     switch (s) {
-        case STAGE_BABY:  return "Малыш";
-        case STAGE_TEEN:  return "Подросток";
-        case STAGE_ADULT: return "Взрослый";
-        case STAGE_ELDER: return "Старец";
+        case STAGE_BABY:  return "Baby";
+        case STAGE_TEEN:  return "Teen";
+        case STAGE_ADULT: return "Adult";
+        case STAGE_ELDER: return "Elder";
     }
     return "?";
 }
 
 static const char* activityTextLocal(Activity a) {
     switch (a) {
-        case ACT_NONE:     return "Отдых";
-        case ACT_HUNT:     return "Охота";
-        case ACT_DISCOVER: return "Поиск";
-        case ACT_REST:     return "Отдых";
+        case ACT_NONE:     return "Rest";
+        case ACT_HUNT:     return "Hunt";
+        case ACT_DISCOVER: return "Search";
+        case ACT_REST:     return "Rest";
         default:           return "";
     }
 }
@@ -138,14 +113,54 @@ static void drawBar(int x, int y, int w, int h, int value, uint16_t color) {
     getContentCanvas()->fillRect(x + 1, y + 1, fillWidth, h - 2, color);
 }
 
-static const uint16_t** currentIdleSet() {
-    switch (petState.stage) {
-        case STAGE_BABY:  return BABY_IDLE_FRAMES;
-        case STAGE_TEEN:  return TEEN_IDLE_FRAMES;
-        case STAGE_ADULT: return ADULT_IDLE_FRAMES;
-        case STAGE_ELDER: return ELDER_IDLE_FRAMES;
+// Вычисляет rect отрисовки питомца. applyScale=true только для Gorgon idle (спрайт-лист).
+static void getPetDrawRect(int baseX, int baseY, int* outX, int* outY, int* outW, int* outH, bool applyScale) {
+    if (!applyScale) {
+        *outX = baseX;
+        *outY = baseY;
+        *outW = PET_W;
+        *outH = PET_H;
+        return;
     }
-    return BABY_IDLE_FRAMES;
+    int scale = skinGetPetDisplayScale(petSkin);
+    if (scale <= 0) scale = 100;
+    int w = PET_W * scale / 100;
+    int h = PET_H * scale / 100;
+    *outX = baseX - (w - PET_W) / 2;
+    *outY = baseY - (h - PET_H) / 2;
+    *outW = w;
+    *outH = h;
+}
+
+// Draw pet frame. useLegacySize=true for attack/dead/egg (Golem assets 115x110).
+static void drawPetFrame(int x, int y, int dstW, int dstH, const uint16_t* frame, bool useLegacySize) {
+    int srcW, srcH;
+    if (useLegacySize)
+        skinGetPetFrameSizeForLegacy(petSkin, &srcW, &srcH);
+    else
+        skinGetPetFrameSize(petSkin, &srcW, &srcH);
+    if (srcW <= 0 || srcH <= 0) {
+        if (dstW == PET_W && dstH == PET_H) {
+            copyProgmemToPet(frame);
+            drawSpriteToContent(x, y, PET_W, PET_H, petBuffer, TFT_WHITE);
+        } else {
+            drawSpriteToContentScaled(x, y, dstW, dstH, frame, 115, 110, TFT_WHITE);
+        }
+    } else {
+        drawSpriteToContentScaled(x, y, dstW, dstH, frame, srcW, srcH, TFT_WHITE);
+    }
+}
+
+// Draw effect frame (e.g. hunger overlay), with scaling if skin has non-standard size.
+static void drawEffectFrame(int x, int y, const uint16_t* frame) {
+    int srcW, srcH;
+    skinGetEffectFrameSize(petSkin, &srcW, &srcH);
+    if (srcW <= 0 || srcH <= 0) {
+        copyProgmemToEffect(frame);
+        drawSpriteToContent(x, y, EFFECT_W, EFFECT_H, effectBuffer, TFT_WHITE);
+    } else {
+        drawSpriteToContentScaled(x, y, EFFECT_W, EFFECT_H, frame, srcW, srcH, TFT_WHITE);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -155,13 +170,13 @@ static void screenBoot() {
     getContentCanvas()->fillScreen(TFT_BLACK);
     drawHeader("TamaFi v2");
 
-    getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
+    getContentCanvas()->setFont(u8g2_font_6x13_tf);
     getContentCanvas()->setTextColor(TFT_WHITE);
     getContentCanvas()->setCursor(20, 60);
-    getContentCanvas()->print("Виртуальный питомец");
+    getContentCanvas()->print("Virtual Pet");
 
     getContentCanvas()->setCursor(20, 100);
-    getContentCanvas()->print("Нажми любую кнопку...");
+    getContentCanvas()->print("Press any button...");
     getContentCanvas()->setFont();
 
     flushContentAndDrawControlBar();
@@ -172,7 +187,7 @@ static void screenBoot() {
 // ---------------------------------------------------------------------------
 static void screenHatch() {
     getContentCanvas()->fillScreen(TFT_BLACK);
-    drawHeader("Вылупление...");
+    drawHeader("Hatching...");
 
     drawGameBackground(0, 18, TFT_W, TFT_H - 18, backgroundImage2, 240);
     unsigned long now = millis();
@@ -185,8 +200,9 @@ static void screenHatch() {
         }
 
 #if UI_DRAW_DEBUG
-        copyProgmemToPet(EGG_IDLE_FRAMES[eggIdleFrameUi]);
-        drawSpriteToContent(70, 80, PET_W, PET_H, petBuffer, TFT_WHITE);
+        int px, py, pw, ph;
+        getPetDrawRect(70, 80, &px, &py, &pw, &ph, false);
+        drawPetFrame(px, py, pw, ph, skinGetEggIdleFrames(petSkin)[eggIdleFrameUi], true);
 #endif
 
         flushContentAndDrawControlBar();
@@ -213,8 +229,9 @@ static void screenHatch() {
         }
 
 #if UI_DRAW_DEBUG
-        copyProgmemToPet(EGG_FRAMES[hatchFrameUi]);
-        drawSpriteToContent(70, 80, PET_W, PET_H, petBuffer, TFT_WHITE);
+        int px, py, pw, ph;
+        getPetDrawRect(70, 80, &px, &py, &pw, &ph, false);
+        drawPetFrame(px, py, pw, ph, skinGetEggHatchFrames(petSkin)[hatchFrameUi], true);
 #endif
 
         flushContentAndDrawControlBar();
@@ -237,7 +254,7 @@ static void drawStatsBlock() {
     drawBar(x, y + 28,  w, h, petState.pet.happiness, TFT_YELLOW);
     drawBar(x, y + 56,  w, h, petState.pet.health,    TFT_GREEN);
 
-    getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
+    getContentCanvas()->setFont(u8g2_font_6x13_tf);
     getContentCanvas()->setTextColor(TFT_BLACK);
     getContentCanvas()->setCursor(x + 3, y + 75);
     getContentCanvas()->print(moodTextLocal(petState.mood));
@@ -275,8 +292,9 @@ static void screenHome() {
         }
 
 #if UI_DRAW_DEBUG
-        copyProgmemToPet(EGG_FRAMES[frameIdx]);
-        drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+        int px, py, pw, ph;
+        getPetDrawRect(petPosX, petPosY, &px, &py, &pw, &ph, false);
+        drawPetFrame(px, py, pw, ph, skinGetEggHatchFrames(petSkin)[frameIdx], true);
 #endif
 
         drawStatsBlock();
@@ -295,8 +313,9 @@ static void screenHome() {
         }
 
 #if UI_DRAW_DEBUG
-        copyProgmemToPet(ATTACK_FRAMES[huntFrame]);
-        drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+        int px, py, pw, ph;
+        getPetDrawRect(petPosX, petPosY, &px, &py, &pw, &ph, false);
+        drawPetFrame(px, py, pw, ph, skinGetAttackFrames(petSkin)[huntFrame], true);
 #endif
 
         drawStatsBlock();
@@ -307,19 +326,31 @@ static void screenHome() {
     // =============================
     //        IDLE ANIMATION
     // =============================
-    int idleSpeed = IDLE_BASE_DELAY;
+    int idleSpeed = (petSkin == SKIN_GORGON) ? IDLE_GORGON_DELAY : IDLE_BASE_DELAY;
     if (petState.mood == MOOD_EXCITED) idleSpeed = IDLE_FAST_DELAY;
     if (petState.mood == MOOD_BORED || petState.mood == MOOD_SICK) idleSpeed = IDLE_SLOW_DELAY;
 
+    int idleFrameCount = 4;
+    const uint16_t** idleSet = skinGetIdleFrames(petSkin, petState.stage, &idleFrameCount);
     if (now - lastIdleFrameUi >= (unsigned long)idleSpeed) {
         lastIdleFrameUi = now;
-        idleFrameUi = (idleFrameUi + 1) % 4;
+        idleFrameUi = (idleFrameUi + 1) % idleFrameCount;
     }
 
 #if UI_DRAW_DEBUG
-    const uint16_t** idleSet = currentIdleSet();
-    copyProgmemToPet(idleSet[idleFrameUi]);
-    drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+    if (skinUsesIdleSpriteSheet(petSkin)) {
+        int px, py, pw, ph;
+        getPetDrawRect(petPosX, petPosY, &px, &py, &pw, &ph, true);  // только Gorgon idle — масштаб 150%
+        const uint16_t* sheet;
+        int sheetW, sheetH, frameW, frameH;
+        skinGetIdleSpriteSheet(petSkin, &sheet, &sheetW, &sheetH, &frameW, &frameH);
+        drawSpriteSheetFrameToContentScaled(px, py, pw, ph,
+            sheet, sheetW, sheetH, idleFrameUi, frameW, frameH, TFT_WHITE);
+    } else {
+        int px, py, pw, ph;
+        getPetDrawRect(petPosX, petPosY, &px, &py, &pw, &ph, false);
+        drawPetFrame(px, py, pw, ph, idleSet[idleFrameUi], false);
+    }
 #endif
 
     // =============================
@@ -332,8 +363,7 @@ static void screenHome() {
     // =============================
 #if UI_DRAW_DEBUG
     if (petState.hungerEffectActive) {
-        copyProgmemToEffect(HUNGER_FRAMES[petState.hungerEffectFrame]);
-        drawSpriteToContent(120, 90, EFFECT_W, EFFECT_H, effectBuffer, TFT_WHITE);
+        drawEffectFrame(120, 90, skinGetHungerFrames(petSkin)[petState.hungerEffectFrame]);
     }
 #endif
 
@@ -342,106 +372,11 @@ static void screenHome() {
 
 
 // ---------------------------------------------------------------------------
-// PET STATUS
-// ---------------------------------------------------------------------------
-static void screenPetStatus() {
-    getContentCanvas()->fillScreen(TFT_BLACK);
-    drawHeader("Статус питомца");
-    getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
-
-    static char buf[32];
-    snprintf(buf, sizeof(buf), "%dд %dч %dм",
-             (int)petState.pet.ageDays, (int)petState.pet.ageHours, (int)petState.pet.ageMinutes);
-
-    int y = INFO_START_Y;
-    y = drawInfoRow(y, "Стадия: ", stageTextLocal(petState.stage));
-    y = drawInfoRow(y, "Возраст: ", buf);
-    snprintf(buf, sizeof(buf), "%d%%", petState.pet.hunger);
-    y = drawInfoRow(y, "Голод:    ", buf);
-    snprintf(buf, sizeof(buf), "%d%%", petState.pet.happiness);
-    y = drawInfoRow(y, "Счастье:  ", buf);
-    snprintf(buf, sizeof(buf), "%d%%", petState.pet.health);
-    y = drawInfoRow(y, "Здоровье: ", buf);
-    y = drawInfoRow(y, "Настр.: ", moodTextLocal(petState.mood));
-    y = drawInfoRow(y, "Характер:", nullptr);
-    snprintf(buf, sizeof(buf), "%d", (int)petState.traitCuriosity);
-    y = drawInfoRow(y, "Любопытство: ", buf, TFT_WHITE, INFO_INDENT);
-    snprintf(buf, sizeof(buf), "%d", (int)petState.traitActivity);
-    y = drawInfoRow(y, "Активность:  ", buf);
-    snprintf(buf, sizeof(buf), "%d", (int)petState.traitStress);
-    drawInfoRow(y, "Стресс:      ", buf);
-
-    getContentCanvas()->setFont();
-    flushContentAndDrawControlBar();
-}
-
-// ---------------------------------------------------------------------------
-// SYSTEM INFO
-// ---------------------------------------------------------------------------
-static void screenSysInfo() {
-    getContentCanvas()->fillScreen(TFT_BLACK);
-    drawHeader("Система");
-    getContentCanvas()->setFont(u8g2_font_6x13_t_cyrillic);
-
-    static char buf[32];
-    int y = INFO_START_Y;
-    y = drawInfoRow(y, "Прошивка: ", "2.0");
-    y = drawInfoRow(y, "MCU: ", "ESP32-S3");
-    snprintf(buf, sizeof(buf), "%d КБ", ESP.getFreeHeap() / 1024);
-    y = drawInfoRow(y, "Память: ", buf);
-    struct tm t;
-    if (timeServiceGetRealTime(&t)) {
-        snprintf(buf, sizeof(buf), "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
-    } else {
-        snprintf(buf, sizeof(buf), "--:--:--");
-    }
-    y = drawInfoRow(y, "Время: ", buf);
-    unsigned long uptimeS = millis() / 1000;
-    unsigned long uh = uptimeS / 3600;
-    unsigned long um = (uptimeS % 3600) / 60;
-    unsigned long us = uptimeS % 60;
-    snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu", uh, um, us);
-    y = drawInfoRow(y, "Uptime: ", buf);
-    y = drawInfoRow(y, "WiFi: ", wifiScanInProgress ? "Скан..." : "Ожидание");
-
-    const BatteryInfo &bat = batteryGetInfo();
-    y = drawInfoSectionHeader(y, "--- Батарея ---");
-    if (bat.available) {
-        if (bat.batteryConnected) {
-            snprintf(buf, sizeof(buf), "%d%% (%d мВ)", bat.percent, bat.voltage);
-            y = drawInfoRow(y, "Заряд: ", buf);
-        } else {
-            y = drawInfoRow(y, "Батарея: ", "нет");
-        }
-        y = drawInfoRow(y, "Зарядка: ", bat.charging ? "Да" : "Нет");
-        y = drawInfoRow(y, "USB: ", bat.usbConnected ? "Подключён" : "---");
-    } else {
-        drawInfoRow(y, "Батарея: ", "нет PMIC", TFT_DARKGREY);
-        y += INFO_STEP;
-    }
-
-    y = drawInfoSectionHeader(y, "--- WiFi ---");
-    static char buf2[16];
-    snprintf(buf, sizeof(buf), "%d", wifiStats.netCount);
-    snprintf(buf2, sizeof(buf2), "%d", wifiStats.openCount);
-    y = drawInfoRow2Col(y, "Сетей: ", buf, "Откр: ", buf2);
-    snprintf(buf, sizeof(buf), "%d", wifiStats.strongCount);
-    snprintf(buf2, sizeof(buf2), "%d", wifiStats.wpaCount);
-    y = drawInfoRow2Col(y, "Сильных: ", buf, "WPA: ", buf2);
-    snprintf(buf, sizeof(buf), "%d", wifiStats.hiddenCount);
-    snprintf(buf2, sizeof(buf2), "%d", wifiStats.avgRSSI);
-    drawInfoRow2Col(y, "Скрытых: ", buf, "RSSI: ", buf2);
-
-    getContentCanvas()->setFont();
-    flushContentAndDrawControlBar();
-}
-
-// ---------------------------------------------------------------------------
 // GAME OVER
 // ---------------------------------------------------------------------------
 static void screenGameOver() {
     getContentCanvas()->fillScreen(TFT_BLACK);
-    drawHeader("Конец игры");
+    drawHeader("Game Over");
 
     unsigned long now = millis();
     if (now - lastDeadFrameUi >= DEAD_DELAY) {
@@ -453,8 +388,9 @@ static void screenGameOver() {
     drawGameBackground(0, 18, TFT_W, TFT_H - 18, backgroundImage, 240);
 
 #if UI_DRAW_DEBUG
-    copyProgmemToPet(DEAD_FRAMES[deadFrameUi]);
-    drawSpriteToContent(petPosX, petPosY, PET_W, PET_H, petBuffer, TFT_WHITE);
+    int px, py, pw, ph;
+    getPetDrawRect(petPosX, petPosY, &px, &py, &pw, &ph, false);
+    drawPetFrame(px, py, pw, ph, skinGetDeadFrames(petSkin)[deadFrameUi], true);
 #endif
 
     flushContentAndDrawControlBar();
@@ -481,6 +417,16 @@ void uiInit() {
 }
 
 void uiOnScreenChange(Screen newScreen) {
+    static Screen s_prev = SCREEN_BOOT;
+    Serial.printf("[ui] screenChange: %d -> %d\n", (int)s_prev, (int)newScreen);
+    s_prev = newScreen;
+    switch (newScreen) {
+        case SCREEN_MENU:       lvglMainMenuShow(mainMenuIndex);    break;
+        case SCREEN_PET_STATUS: lvglPetStatusShow();                break;
+        case SCREEN_SYSINFO:    lvglSysInfoShow();                  break;
+        case SCREEN_SETTINGS:   lvglSettingsShow(settingsMenuIndex); break;
+        default: break;
+    }
     uiMenuOnScreenChange(newScreen);
     if (newScreen == SCREEN_HATCH) {
         eggIdleFrameUi = hatchFrameUi = 0;
@@ -503,10 +449,12 @@ void uiDrawScreen(Screen screen,
         case SCREEN_BOOT:        screenBoot(); break;
         case SCREEN_HATCH:       screenHatch(); break;
         case SCREEN_HOME:        screenHome(); break;
-        case SCREEN_MENU:        screenMenu(mainMenuIdx); break;
-        case SCREEN_PET_STATUS:  screenPetStatus(); break;
-        case SCREEN_SYSINFO:     screenSysInfo(); break;
-        case SCREEN_SETTINGS:    screenSettings(settingsIdx); break;
+        case SCREEN_MENU:
+        case SCREEN_PET_STATUS:
+        case SCREEN_SYSINFO:
+        case SCREEN_SETTINGS:
+            // Rendered by lvglCoreTick() in loop()
+            break;
         case SCREEN_GAMEOVER:    screenGameOver(); break;
     }
 }

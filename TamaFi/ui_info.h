@@ -3,9 +3,9 @@
 #include <Arduino.h>
 
 // Единый стиль экранов label + value (Статус, Система)
-// Использование: setFont(u8g2_font_6x13_t_cyrillic) перед вызовами
+// Использование: setFont(u8g2_font_6x13_tf) перед вызовами (Latin)
 
-#define INFO_START_Y 28
+#define INFO_START_Y 32   // 28 + 50%
 #define INFO_STEP    16
 #define INFO_INDENT  6
 

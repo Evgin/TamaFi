@@ -31,3 +31,8 @@ unsigned long inputLastActiveMs();
 
 // Принудительный сброс таймера бездействия (например, при пробуждении из сна).
 void inputResetActivity();
+
+// For LVGL indev: touch state in content area (y < CONTROL_STRIP_TOP).
+// Returns true if touch is active in content area; fills physical coords (0..LCD_W, 0..LCD_H).
+// LVGL should use (x, y - LVGL_HEADER_H) for its coordinate system.
+bool inputGetTouchState(int16_t* outX, int16_t* outY);

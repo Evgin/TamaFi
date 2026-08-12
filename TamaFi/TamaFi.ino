@@ -20,6 +20,11 @@
 #include "display_amoled.h"
 #include "device_sleep.h"
 #include "ui.h"
+#include "lvgl_core.h"
+#include "lvgl_main_menu.h"
+#include "lvgl_settings.h"
+#include "lvgl_pet_status.h"
+#include "lvgl_sysinfo.h"
 #include "battery.h"
 
 HWCDC USBSerial;
@@ -35,6 +40,7 @@ static unsigned long lastLogicTick    = 0;
 static unsigned long lastSaveTime     = 0;
 static unsigned long lastBatteryPoll  = 0;
 static unsigned long lastFpsTime      = 0;
+static unsigned long lastHeartbeatMs  = 0;
 static unsigned long lastNtpSyncMs    = 0;
 static bool          ntpSyncDoneOnce  = false;
 static unsigned int  fpsFrameCount    = 0;
@@ -160,6 +166,12 @@ void setup() {
     DBG("[icon] before uiOnScreenChange");
     uiOnScreenChange(currentScreen);
     DBG("[icon] after uiOnScreenChange");
+
+    lvglCoreInit();         // LVGL infrastructure: driver, touch, timer
+    lvglMainMenuBuild();
+    lvglSettingsBuild();
+    lvglPetStatusBuild();
+    lvglSysInfoBuild();
 }
 
 // ============ loop ============
@@ -202,6 +214,7 @@ void loop() {
 
     // 4. Navigation: handle input
     if (event != INPUT_NONE) {
+        DBG("[input] event=" + String((int)event));
         navHandleInput(event, petState);
     }
 
@@ -253,6 +266,7 @@ void loop() {
         unsigned long tBeforeDraw = millis();
 #endif
         uiDrawScreen(currentScreen, mainMenuIndex, settingsMenuIndex);
+        lvglCoreTick(currentScreen);
 #if UI_DEBUG_TIMING
         unsigned long tAfterDraw = millis();
         lastPreDrawMs = tBeforeDraw - loopStart;
@@ -276,5 +290,12 @@ void loop() {
             fpsFrameCount = 0;
         }
 #endif
+    }
+
+    // 12. Heartbeat (every 10s) — for crash analysis
+    if (now - lastHeartbeatMs >= 10000) {
+        lastHeartbeatMs = now;
+        Serial.printf("[loop] heartbeat: screen=%d uptime=%lu ms\n", (int)currentScreen, now);
+        USBSerial.printf("[loop] heartbeat: screen=%d uptime=%lu ms\n", (int)currentScreen, now);
     }
 }

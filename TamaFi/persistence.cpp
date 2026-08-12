@@ -72,6 +72,7 @@ void loadState(PetState &pet) {
     soundVolume        = prefs.getUChar("sndVol", DEFAULT_SOUND_VOLUME);
     tftBrightnessIndex = prefs.getUChar("tftBri", DEFAULT_TFT_BRIGHTNESS_INDEX);
     petSkin            = prefs.getUChar("petSkin", 0);
+    if (petSkin > 1) petSkin = 0;  // clamp: only Gorgon (0) and Golem (1)
 
     // Apply loaded volume level to hardware
     soundSetVolume(soundVolume);
