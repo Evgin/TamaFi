@@ -741,3 +741,22 @@ Settings: модальный picker для настроек с варианта�
 Фикс: lv_obj_set_size(list, LV_PCT(100), CONTENT_H - LVGL_HEADER_H) — полная ширина и 350px высота (весь LVGL-viewport).
 Список пикера: LV_PCT(80) × LV_PCT(80) — центрированное модальное окно.
 Добавлен #include "device_config.h" в lvgl_main_menu.cpp и lvgl_pet_status.cpp.
+
+---
+Дата: 2026-08-12
+---
+
+### Краткое описание сессии
+Коммит и пуш ветки rework-ui: LVGL-меню/скины; очистка истории от артефактов сборки TamaFi/build (405MB .elf блокировал GitHub).
+
+### Обсуждённое
+- Push отклонён из-за TamaFi.ino.elf в коммите 5a72466
+- Решение: filter-branch удалил TamaFi/build из истории main..rework-ui, добавлен .gitignore
+
+### Внесённые изменения
+- git history (rework-ui): удалён TamaFi/build/ из всех коммитов ветки
+- .gitignore: добавлен TamaFi/build/
+- origin/rework-ui: ветка запушена
+
+### Важно на будущее
+- Не коммитить TamaFi/build/; локальные ветки control-panel/pet-time-scale/show-pet-age могут ещё содержать старый .elf в своих refs
